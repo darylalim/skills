@@ -569,7 +569,9 @@ Versions are not pinned on the command line — `uv add` resolves the current la
 |--------------------------------------|----------------------------------------|
 | Text generation (non-transformers)   | `accelerate` (transformers branch)     |
 | Image / vision / diffusion           | `diffusers`, `accelerate`, `pillow`    |
-| ASR                                  | `"mlx-whisper;platform_machine=='arm64' and sys_platform=='darwin'"`, `"openai-whisper;platform_machine!='arm64' or sys_platform!='darwin'"` — or substitute `transformers[audio]` |
+| Automatic speech recognition         | `"mlx-audio;platform_machine=='arm64' and sys_platform=='darwin'"`, `"transformers[audio];platform_machine!='arm64' or sys_platform!='darwin'"` |
+| Text to speech                       | `"mlx-audio;platform_machine=='arm64' and sys_platform=='darwin'"`, `"transformers[audio];platform_machine!='arm64' or sys_platform!='darwin'"` |
+| Audio to audio (STS)                 | `"mlx-audio;platform_machine=='arm64' and sys_platform=='darwin'"` — **no fallback** (Apple-only) |
 | Vision-language                      | `"mlx-vlm;platform_machine=='arm64' and sys_platform=='darwin'"` |
 | Embeddings                           | `sentence-transformers`                |
 | Data processing                      | `pandas`, `pyarrow`                    |
