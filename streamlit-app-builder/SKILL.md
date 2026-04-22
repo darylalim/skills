@@ -527,3 +527,62 @@ streamlit run streamlit_app.py
 <Included when the source model card has gated: true>
 Run `huggingface-cli login` on the host before first use, OR set `HF_TOKEN` in `.env` / your platform's secret store. Without a token, the app will fail fast at startup with a clear error.
 ````
+
+## Step 6: Initialize and install via `uv`
+
+```bash
+pip install uv --break-system-packages   # if uv is not already available
+
+uv init --name <app-name> --package
+uv add streamlit python-dotenv huggingface_hub
+uv add "mlx-lm;platform_machine=='arm64' and sys_platform=='darwin'"
+uv add "transformers;platform_machine!='arm64' or sys_platform!='darwin'"
+uv add --dev ruff ty pytest
+```
+
+Versions are not pinned on the command line — `uv add` resolves the current latest at skill-run time and writes the resolved specifier to `pyproject.toml`.
+
+**Pattern-specific additional deps:**
+
+| Pattern                              | Add                                    |
+|--------------------------------------|----------------------------------------|
+| Text generation (non-transformers)   | `accelerate` (transformers branch)     |
+| Image / vision / diffusion           | `diffusers`, `accelerate`, `pillow`    |
+| ASR                                  | `"mlx-whisper;platform_machine=='arm64' and sys_platform=='darwin'"`, `"openai-whisper;platform_machine!='arm64' or sys_platform!='darwin'"` — or substitute `transformers[audio]` |
+| Vision-language                      | `"mlx-vlm;platform_machine=='arm64' and sys_platform=='darwin'"` |
+| Embeddings                           | `sentence-transformers`                |
+| Data processing                      | `pandas`, `pyarrow`                    |
+| Visualization                        | `plotly`                               |
+
+Add `[tool.pytest.ini_options]` to `pyproject.toml` with `testpaths = ["tests"]` and `pythonpath = ["src"]`. Configure `[tool.ruff]` with import-sorting (`select = ["E", "F", "I"]`). Configure `[tool.ty]` with `strict = ["src/"]`.
+
+## Step 7: Code-quality gate
+
+Run these four commands, in order. All must pass before reporting the scaffold as complete.
+
+```bash
+uv run ruff check --fix .
+uv run ruff format .
+uv run ty check src/ tests/
+uv run pytest -v
+```
+
+Fix failures by adjusting the generated code or fixtures. Do not weaken tests to make them pass. If the smoke test fails because a required env var is missing, add the var to `tests/conftest.py`'s startup block.
+
+## Step 8: Report to user
+
+Surface:
+
+1. **Files created**, grouped by purpose: app code, config, tests, project files.
+2. **Chosen model variant** — if MLX resolution returned a match, show `mlx-community/<variant>` alongside the original `<org>/<model>`; otherwise note "no MLX equivalent found, app uses transformers on all platforms."
+3. **License + commercial-use flag** — from `references/license-flags.md`, if the model's license matches a flagged entry. Quote the flag text inline.
+4. **Gated-model setup** — when the source card had `gated: true`, show the `huggingface-cli login` command and the alternative `HF_TOKEN` path.
+5. **Exact local-run command:**
+
+   ```bash
+   uv sync
+   cp .env.example .env
+   streamlit run streamlit_app.py
+   ```
+
+6. **Non-goals reminder** — a short list of things the scaffold does NOT include (auth, Docker, CI, DB, observability), explicitly marked as the team's responsibility.
