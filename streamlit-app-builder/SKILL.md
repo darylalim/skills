@@ -129,3 +129,96 @@ Produce this structure in memory, consumed by all subsequent steps:
 | Functions with scalar / text parameters, no model, no I/O                        | General Script                        |
 
 Fall through to "General Script" when ambiguous. The corresponding template is in `references/pipeline-tag-patterns.md` under the Fallback section.
+
+## Step 4: Fetch live Streamlit docs
+
+Before writing code, fetch the following pages from `docs.streamlit.io` and verify APIs match the templates below. See `references/streamlit-docs-index.md` for full URLs.
+
+**Always:**
+- Multipage + `st.navigation` + `st.Page`
+- `@st.cache_resource` + `@st.cache_data`
+- `streamlit.testing.v1.AppTest`
+- Secrets (informs `.gitignore` entry and README guidance)
+- File organization
+
+**Conditional — based on classified pattern:**
+- Chat: `st.chat_input`, `st.chat_message`
+- ASR / audio: `st.audio_input`, `st.audio`
+- Image: `st.file_uploader`, `st.image`
+- Visualization: `st.plotly_chart`, `st.line_chart`, `st.dataframe`
+
+If any fetched page shows an API that differs from the template in this file, prefer the fetched docs. Update the template accordingly before generating the app. When docs are unreachable, proceed with the templates here and note in the final report that live verification was skipped.
+
+## Step 5: Scaffold files
+
+Create the following directory tree (substitute `<app-name>` / `<app_name>`):
+
+```
+<app-name>/
+├── .streamlit/
+│   └── config.toml
+├── src/
+│   └── <app_name>/
+│       ├── __init__.py
+│       ├── config.py
+│       ├── inference.py
+│       ├── data.py
+│       ├── viz.py
+│       └── pages/
+│           ├── __init__.py
+│           ├── home.py
+│           └── <feature>.py           # only when source has multiple flows
+├── tests/
+│   ├── __init__.py
+│   ├── conftest.py
+│   ├── test_config.py
+│   ├── test_inference.py
+│   ├── test_data.py
+│   ├── test_viz.py                    # only when viz.py exists
+│   └── test_app_smoke.py
+├── streamlit_app.py
+├── pyproject.toml
+├── uv.lock
+├── .env.example
+├── .gitignore
+└── README.md
+```
+
+`<app-name>` is hyphenated for the outer directory / `uv init` project name. `<app_name>` is its Python-safe equivalent (underscores) for the importable package — `uv init --package` performs this normalization automatically.
+
+**Always generate multipage** even when the source has a single flow. A single `home.py` costs almost nothing and makes adding pages later frictionless.
+
+### `streamlit_app.py` (entrypoint — navigation router)
+
+```python
+"""Streamlit entrypoint. Registers pages with st.navigation."""
+import streamlit as st
+
+from <app_name>.pages import home
+
+
+def main() -> None:
+    pages = [
+        st.Page(home.render, title="Home", icon=":material/home:"),
+        # Add st.Page(<module>.render, title="...") as the app grows.
+    ]
+    st.navigation(pages).run()
+
+
+if __name__ == "__main__":
+    main()
+```
+
+### `.streamlit/config.toml`
+
+```toml
+[server]
+headless = true
+port = 8501
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+# Override as the team's branding requires; defaults are sensible.
+```
