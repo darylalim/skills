@@ -52,7 +52,7 @@ When the source artifact references a model with an MLX-converted equivalent on 
 | `text-to-speech` | `mlx_audio.tts` | `mlx-audio` | no | `transformers[audio]` (SpeechT5 / Bark / Parler-TTS) |
 | `audio-to-audio` | `mlx_audio.sts` | `mlx-audio` | **yes** | — (`RuntimeError` at model load off Apple Silicon) |
 
-Apple-only rows install no transformers fallback; `inference.py` raises a clear `RuntimeError` at model load on non-Apple hosts, and the generated `README.md` notes the platform requirement.
+Apple-only rows install no transformers fallback; `inference.py` raises a clear `RuntimeError` at model load on non-Apple-Silicon hosts, and the generated `README.md` notes the platform requirement.
 
 The MLX lookup is independent of where the skill itself runs. A Linux developer scaffolding from an HF model card still produces an app with MLX support wired in — runtime dispatch activates MLX only when a user later runs the app on a Mac. (Exception: `audio-to-audio` apps run on Apple Silicon only, by design.)
 
@@ -368,7 +368,7 @@ For non-text-generation pipelines, each variant still dispatches via `config.IS_
 | `image-to-text`, `image-text-to-text` | `from mlx_vlm import load, generate` → `generate(model, processor, formatted_prompt, image)` | `pipeline("image-to-text", model=config.MODEL_ID)` |
 | `automatic-speech-recognition` | `from mlx_audio.stt.utils import load` → `load(id).generate(audio).text` | `pipeline("automatic-speech-recognition", model=config.MODEL_ID)` |
 | `text-to-speech` | `from mlx_audio.tts.utils import load_model`; iterate `load_model(id).generate(text=..., voice=...)` and concatenate each result's `.audio` | `pipeline("text-to-speech", model=config.MODEL_ID)` |
-| `audio-to-audio` | `mlx_audio.sts.<ModelClass>.from_pretrained(id)` + model-specific method (e.g. `.enhance(audio)`, `.separate_long(...)`). **Apple-only.** | — (`RuntimeError` on non-Apple hosts) |
+| `audio-to-audio` | `mlx_audio.sts.<ModelClass>.from_pretrained(id)` + model-specific method (e.g. `.enhance(audio)`, `.separate_long(...)`). **Apple-only.** | — (`RuntimeError` on non-Apple-Silicon hosts) |
 
 For `audio-to-audio`, the exact `mlx_audio.sts` class and method depend on the model (SAM-Audio → `separate_long`, MossFormer2 → `enhance`, DeepFilterNet → `enhance`). Step 2 maps the HF card's tags/name to a known `mlx_audio.sts` class; if no mapping exists, the skill reports "no supported STS backend" and emits a General Script page with a manual-wiring TODO instead of scaffolding broken inference code.
 
