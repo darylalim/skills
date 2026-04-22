@@ -135,6 +135,34 @@ if st.button("Speak") and text:
     st.audio(audio_bytes, format="audio/wav")
 ```
 
+## Audio transform (speech-to-speech, separation, enhancement)
+
+`pipeline_tag`: `audio-to-audio`
+
+**Apple Silicon only.** The generated `inference.py` raises a clear `RuntimeError` on non-Apple hosts.
+
+```python
+import streamlit as st
+from <app_name>.inference import transform_audio
+
+st.title("Transform Audio")
+audio = st.audio_input("Record") or st.file_uploader(
+    "Upload", type=["wav", "mp3", "m4a", "flac"]
+)
+if audio and st.button("Transform"):
+    result = transform_audio(audio)
+    # Single-output models (enhancement / denoising) return bytes.
+    # Multi-output models (source separation) return dict[str, bytes].
+    if isinstance(result, dict):
+        for label, audio_bytes in result.items():
+            st.subheader(label)
+            st.audio(audio_bytes, format="audio/wav")
+    else:
+        st.audio(result, format="audio/wav")
+```
+
+The shape of `transform_audio`'s return is decided at scaffold time based on the HF model card: `separate_long`-style models return a dict of labeled outputs; `enhance`-style models return a single `bytes`. If the card doesn't map to a known `mlx_audio.sts` class, the skill emits a General Script page with a manual-wiring TODO instead of this template.
+
 ## Image classification / object detection
 
 `pipeline_tag`: `image-classification`, `object-detection`
