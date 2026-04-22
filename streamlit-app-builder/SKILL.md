@@ -586,3 +586,18 @@ Surface:
    ```
 
 6. **Non-goals reminder** — a short list of things the scaffold does NOT include (auth, Docker, CI, DB, observability), explicitly marked as the team's responsibility.
+
+## Output checklist
+
+- [ ] Full directory tree populated (see Step 5)
+- [ ] `pyproject.toml` declares MLX and transformers with correct environment markers
+- [ ] `.env.example` covers every `_require` and `_get` key in `config.py`
+- [ ] `ruff check --fix`, `ruff format`, `ty check`, and `pytest` all pass clean
+- [ ] `README.md` documents setup, env vars, license, gated-model instructions
+- [ ] Report to user surfaces MLX resolution + license flags + non-goals reminder
+
+## References
+
+- `references/streamlit-docs-index.md` — canonical docs URLs for live fetches
+- `references/pipeline-tag-patterns.md` — HF pipeline_tag → UI pattern catalog
+- `references/license-flags.md` — commercial-use flags for model licenses
