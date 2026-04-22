@@ -49,3 +49,83 @@ MLX support is encoded in the generated app as follows:
 - `src/<app_name>/inference.py` reads `config.IS_APPLE_SILICON` and dispatches to the appropriate backend at runtime.
 
 **MLX model resolution:** query `https://huggingface.co/api/models?author=mlx-community&search=<base-name>` and pick the highest-download-count variant. The chosen variant is noted in `inference.py` with override instructions.
+
+## Step 1: Identify and load the input
+
+Classify the input into one of three types, then load it.
+
+### Local Python script (`.py`)
+
+Read the file. Apply Step 2's AST analysis directly.
+
+### Jupyter notebook (`.ipynb`, local or URL)
+
+Resolve the URL to a raw `.ipynb` source:
+
+- GitHub: `github.com/<owner>/<repo>/blob/<ref>/<path>.ipynb` → `raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>.ipynb`
+- Colab: `colab.research.google.com/drive/<id>` → Colab export endpoint
+- GitLab: raw endpoint, or append `?ref=main&format=json` to the web URL
+- Other: use directly if the URL serves `.ipynb` JSON
+
+Download and extract code cells:
+
+```bash
+curl -L -o notebook.ipynb "<resolved_raw_url>"
+```
+
+```python
+import json
+with open("notebook.ipynb") as f:
+    nb = json.load(f)
+code_cells = [
+    "".join(cell["source"])
+    for cell in nb["cells"]
+    if cell["cell_type"] == "code"
+]
+```
+
+Markdown cells are preserved only as docstrings on the scaffolded home page.
+
+### HuggingFace model card URL
+
+Resolve the model ID from the URL (strip `https://huggingface.co/` prefix; keep `<org>/<model>`). Fetch:
+
+- **Metadata:** `https://huggingface.co/api/models/<id>` → JSON with `pipeline_tag`, `library_name`, `tags`, `gated`, `license`, `license_name`, `downloads`.
+- **README:** `https://huggingface.co/<id>/raw/main/README.md` → YAML frontmatter (fallback for metadata fields), first library-idiomatic code snippet (seeds the inference function), license text.
+- **MLX equivalent:** `https://huggingface.co/api/models?author=mlx-community&search=<base-name>` — always performed for HF-card inputs, regardless of the skill's host platform. The generated app's runtime dispatch decides whether to use it.
+
+## Step 2: Build the internal representation
+
+Produce this structure in memory, consumed by all subsequent steps:
+
+```python
+{
+    "pattern": "<UI pattern key from pipeline-tag-patterns.md>",
+    "inference_fn": {"name": "...", "params": [...], "returns": "..."} or None,
+    "data_fns": [...],
+    "viz_fns": [...],
+    "deps": ["pypi-name", ...],
+    "is_gated": bool,
+    "license": "<SPDX or license_name>",
+    "mlx_equivalent": "<mlx-community/...>" or None,
+}
+```
+
+**For code inputs (script or notebook):** AST-parse the code (`ast.parse` + walk `FunctionDef`) to extract top-level function signatures with type annotations. Classify each function as inference (calls `.predict`, `.generate`, `.forward`, `.__call__` on a model), data (reads/writes files, manipulates DataFrames), or viz (returns a matplotlib/plotly figure). Collect imports for dependency inference.
+
+**For HF model card inputs:** Map fields directly from the API JSON. Derive `deps` from `library_name` + `tags` (e.g., `transformers` → `transformers` + `torch`; `diffusers` → `diffusers` + `transformers` + `torch`; `sentence-transformers` → `sentence-transformers` + `torch`). Extract the first library-idiomatic snippet from the README as the seed for `inference.py`'s transformers branch.
+
+## Step 3: Classify the UI pattern
+
+**HF input:** look up `pipeline_tag` in `references/pipeline-tag-patterns.md`. Use the matching page body template.
+
+**Code input:** use the heuristic below. When multiple indicators match, classify on the most specific:
+
+| Indicators                                                                       | Pattern                               |
+|----------------------------------------------------------------------------------|---------------------------------------|
+| `sklearn`, `torch`, `keras`, `.predict()`, loads a model                         | Inference (match to `pipeline_tag` if recognizable, else General Script) |
+| `pandas` I/O + DataFrame transforms, no model                                    | Data processing page (file upload → transform → download) |
+| `matplotlib`, `plotly`, `seaborn`, `.plot()`                                     | Visualization page (interactive chart controls) |
+| Functions with scalar / text parameters, no model, no I/O                        | General Script                        |
+
+Fall through to "General Script" when ambiguous. The corresponding template is in `references/pipeline-tag-patterns.md` under the Fallback section.
