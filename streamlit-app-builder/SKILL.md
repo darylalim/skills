@@ -40,15 +40,27 @@ Streamlit's API evolves. Before generating code, fetch the current Streamlit doc
 
 ### 2. Prefer MLX on Apple Silicon
 
-When the source artifact references a model with an MLX-converted equivalent at `huggingface.co/mlx-community/...`, the generated app uses the MLX backend (`mlx-lm` for text, `mlx-vlm` for vision-language, `mlx-whisper` for ASR) when running on `arm64-darwin`, and falls back to `transformers` / `diffusers` / `huggingface_hub` elsewhere.
+When the source artifact references a model with an MLX-converted equivalent on HuggingFace, the generated app uses an MLX backend on `arm64-darwin` and falls back to `transformers` / `diffusers` / `huggingface_hub` elsewhere.
 
-The MLX lookup is independent of where the skill itself runs. A Linux developer scaffolding from an HF model card URL still produces an app with MLX support wired in — runtime dispatch activates MLX only when a user later runs the app on a Mac.
+**MLX backend index:**
+
+| `pipeline_tag` | MLX module | PyPI | Apple-only? | Transformers fallback |
+|---|---|---|---|---|
+| `text-generation`, `conversational` | `mlx_lm` | `mlx-lm` | no | `transformers` |
+| `image-to-text`, `image-text-to-text` | `mlx_vlm` | `mlx-vlm` | no | `transformers` |
+| `automatic-speech-recognition` | `mlx_audio.stt` | `mlx-audio` | no | `transformers[audio]` (via `pipeline("automatic-speech-recognition")`) |
+| `text-to-speech` | `mlx_audio.tts` | `mlx-audio` | no | `transformers[audio]` (SpeechT5 / Bark / Parler-TTS) |
+| `audio-to-audio` | `mlx_audio.sts` | `mlx-audio` | **yes** | — (`RuntimeError` at model load off Apple Silicon) |
+
+Apple-only rows install no transformers fallback; `inference.py` raises a clear `RuntimeError` at model load on non-Apple hosts, and the generated `README.md` notes the platform requirement.
+
+The MLX lookup is independent of where the skill itself runs. A Linux developer scaffolding from an HF model card still produces an app with MLX support wired in — runtime dispatch activates MLX only when a user later runs the app on a Mac. (Exception: `audio-to-audio` apps run on Apple Silicon only, by design.)
 
 MLX support is encoded in the generated app as follows:
-- `pyproject.toml` declares MLX and transformers with environment markers so `uv sync` installs the right backend per host.
-- `src/<app_name>/inference.py` reads `config.IS_APPLE_SILICON` and dispatches to the appropriate backend at runtime.
+- `pyproject.toml` declares MLX and transformers with environment markers so `uv sync` installs the right backend per host. Audio-to-audio apps declare `mlx-audio` with an Apple-only marker and omit the fallback dep.
+- `src/<app_name>/inference.py` reads `config.IS_APPLE_SILICON` and dispatches at runtime.
 
-**MLX model resolution:** query `https://huggingface.co/api/models?author=mlx-community&search=<base-name>` and pick the highest-download-count variant. The chosen variant is noted in `inference.py` with override instructions.
+**MLX model resolution:** query `https://huggingface.co/api/models?author=mlx-community&search=<base-name>` and pick the highest-download-count variant. If the base name has no `mlx-community` match, note "no MLX equivalent found" in the final report and generate the app with `transformers` only. Audio-to-audio inputs without a match fail at scaffold time with a clear error — there is no fallback to generate toward.
 
 ## Step 1: Identify and load the input
 
