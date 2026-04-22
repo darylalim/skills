@@ -222,3 +222,131 @@ gatherUsageStats = false
 [theme]
 # Override as the team's branding requires; defaults are sensible.
 ```
+
+### `src/<app_name>/config.py`
+
+Single source of truth for environment config. Imported by every other module; exposes module-level constants loaded from the environment at import time. Raises `RuntimeError` on missing required vars.
+
+```python
+"""Environment config. Fail fast at import if required vars are missing."""
+import os
+import platform
+import sys
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+_repo_root = Path(__file__).resolve().parents[2]
+_env_file = _repo_root / ".env"
+if _env_file.exists():
+    load_dotenv(_env_file, override=False)  # shell env always wins
+
+
+def _require(key: str) -> str:
+    value = os.getenv(key)
+    if not value:
+        raise RuntimeError(
+            f"Required env var {key!r} not set. Copy .env.example to .env "
+            f"(local dev) or set it in your platform's secret store (prod)."
+        )
+    return value
+
+
+def _get(key: str, fallback: str) -> str:
+    return os.getenv(key, fallback)
+
+
+# Required
+MODEL_ID: str = _require("MODEL_ID")
+
+# Optional with defaults
+MODEL_REVISION: str = _get("MODEL_REVISION", "main")
+DEVICE: str = _get("DEVICE", "auto")          # "auto" | "cpu" | "cuda" | "mps"
+MAX_NEW_TOKENS: int = int(_get("MAX_NEW_TOKENS", "512"))
+
+# Optional secrets. For gated models, swap this line for:
+#   HF_TOKEN: str = _require("HF_TOKEN")
+HF_TOKEN: str | None = os.getenv("HF_TOKEN")
+
+# Runtime-detected
+IS_APPLE_SILICON: bool = (
+    sys.platform == "darwin" and platform.machine() == "arm64"
+)
+```
+
+**Gated models:** if the source HF card has `gated: true`, emit `HF_TOKEN = _require("HF_TOKEN")` instead of the optional form.
+
+### `.env.example`
+
+Every `_require` and `_get` key in `config.py` gets a line here with a placeholder default and a comment. Example:
+
+```
+# Required
+MODEL_ID=<org>/<model>
+
+# Optional
+MODEL_REVISION=main
+DEVICE=auto                  # auto | cpu | cuda | mps
+MAX_NEW_TOKENS=512
+
+# Optional unless the model is gated
+HF_TOKEN=
+```
+
+### `src/<app_name>/inference.py` (with platform dispatch)
+
+When the source is a model-based artifact, `inference.py` loads the model and wraps calls. It dispatches between MLX and transformers by reading `config.IS_APPLE_SILICON`. The template below is for `text-generation`; other pipeline tags use the equivalent library calls (see `references/pipeline-tag-patterns.md` for signatures).
+
+```python
+"""Model loading and inference. Dispatches MLX <-> transformers by platform."""
+from functools import lru_cache
+from typing import Any
+
+from <app_name> import config
+
+# MLX model ID chosen at scaffold time (highest downloads under mlx-community).
+# Override by setting MLX_MODEL_ID in .env.
+MLX_MODEL_ID_DEFAULT: str | None = "<mlx-community/...>"  # set when Step 1 found a match; else None
+
+
+@lru_cache(maxsize=1)
+def load_model() -> Any:
+    """Lazy-load the model once per process."""
+    if config.IS_APPLE_SILICON and MLX_MODEL_ID_DEFAULT:
+        return _load_mlx()
+    return _load_transformers()
+
+
+def _load_mlx():
+    from mlx_lm import load
+
+    import os as _os
+    mlx_id = _os.getenv("MLX_MODEL_ID", MLX_MODEL_ID_DEFAULT)
+    model, tokenizer = load(mlx_id)
+    return ("mlx", model, tokenizer)
+
+
+def _load_transformers():
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+
+    tokenizer = AutoTokenizer.from_pretrained(
+        config.MODEL_ID, revision=config.MODEL_REVISION, token=config.HF_TOKEN
+    )
+    model = AutoModelForCausalLM.from_pretrained(
+        config.MODEL_ID, revision=config.MODEL_REVISION, token=config.HF_TOKEN
+    )
+    return ("transformers", model, tokenizer)
+
+
+def generate_response(prompt: str, max_new_tokens: int | None = None) -> str:
+    backend, model, tokenizer = load_model()
+    max_tokens = max_new_tokens or config.MAX_NEW_TOKENS
+    if backend == "mlx":
+        from mlx_lm import generate
+        return generate(model, tokenizer, prompt=prompt, max_tokens=max_tokens)
+    inputs = tokenizer(prompt, return_tensors="pt")
+    out = model.generate(**inputs, max_new_tokens=max_tokens)
+    return tokenizer.decode(out[0], skip_special_tokens=True)
+```
+
+For non-text-generation pipelines, substitute the library calls: `mlx_vlm.load`/`generate` for vision-language, `mlx_whisper.transcribe` for ASR, `transformers.pipeline(<task>, ...)` for the transformers branch. Each variant still dispatches via `config.IS_APPLE_SILICON` and exposes a function named per the pipeline (`transcribe`, `caption`, `classify`, etc.) matching the page template.
