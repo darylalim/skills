@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-A collection of Claude Code skills. Each skill is a `SKILL.md` file in its own subdirectory, invoked at runtime via the `Skill` tool.
+A collection of Claude Code skills. Each skill is a `SKILL.md` file in its own subdirectory, invoked at runtime via the `Skill` tool. Design specs and implementation plans (when used) live under `docs/superpowers/specs/` and `docs/superpowers/plans/`.
 
 ## Skill File Format
 
@@ -14,7 +14,9 @@ Each skill lives at `<skill-name>/SKILL.md`:
 ---
 name: <skill-name>
 description: >
-  Trigger description. Include explicit trigger phrases (e.g., "Triggers: turn a notebook into a Dash app...").
+  Trigger description with concrete phrases — users' natural phrasings
+  ("turn a notebook into X", "generate a UI for Y"), file extensions
+  (`.ipynb`), and URL patterns (`huggingface.co/...`) the skill should match.
 ---
 
 # Skill Title
@@ -23,9 +25,11 @@ description: >
 
 The `description` field drives invocation — make it concrete and trigger-driven.
 
+Long lookup tables (catalogs, mappings) can live in a `<skill-name>/references/` subdirectory and be referenced by path from `SKILL.md`.
+
 ## App-Builder Skills
 
-`dash-app-builder` and `gradio-app-builder` share a single-file-app workflow. `streamlit-app-builder` diverged in the 2026-04-21 production rewrite — it produces a full modular package instead of a single file. `dash-app-builder` additionally supports an Analytics Dashboard pattern with `dash-bootstrap-components`.
+`dash-app-builder` and `gradio-app-builder` share a single-file-app workflow. `streamlit-app-builder` produces a production-structured package instead. `dash-app-builder` additionally supports an Analytics Dashboard pattern with `dash-bootstrap-components`.
 
 ### `dash-app-builder` and `gradio-app-builder`
 
@@ -36,10 +40,6 @@ The `description` field drives invocation — make it concrete and trigger-drive
 - `test_dash_app.py` / `test_gradio_app.py` — pytest unit tests for non-UI functions only
 - `pyproject.toml` — uv-managed project
 - `.env.example` — all configurable env vars with placeholder defaults
-
-### `streamlit-app-builder`
-
-Produces a production-structured app package (see `streamlit-app-builder/SKILL.md` for the full workflow). Outputs include a `src/<app_name>/` package, a multipage `st.navigation` router at `streamlit_app.py`, `src/<app_name>/config.py` with env-based fail-fast validation, a `tests/` directory (including a `streamlit.testing.v1.AppTest` smoke test), and platform-conditional dependencies for MLX on Apple Silicon. Accepts notebooks, scripts, and HuggingFace model card URLs as input.
 
 **Toolchain:**
 ```bash
@@ -54,8 +54,23 @@ uv run ty check <app>.py
 uv run pytest test_<app>.py -v
 ```
 
-**Code principles:**
-- Wrap original logic — don't rewrite it
+### `streamlit-app-builder`
+
+**Workflow:** Analyze source (script / notebook / HF model card URL) → Fetch live Streamlit docs → Classify UI pattern → Scaffold production package → Code quality → Testing
+
+**Outputs:**
+- `streamlit_app.py` — `st.navigation` router entrypoint
+- `src/<app_name>/` — package with `config.py`, `inference.py` (MLX/transformers dispatch), `data.py`, `viz.py`, and `pages/`
+- `tests/` — pytest unit tests plus a `streamlit.testing.v1.AppTest` smoke test
+- `.streamlit/config.toml` — Streamlit server and theme config
+- `pyproject.toml` — uv-managed, platform-conditional deps (MLX on Apple Silicon, transformers elsewhere)
+- `.env.example` — documents every env var the app reads
+
+See `streamlit-app-builder/SKILL.md` for the full workflow.
+
+### Shared code principles
+
+- Wrap original logic — don't rewrite it (streamlit distributes by concern across `src/<app_name>/` modules)
 - Load config from `.env` via `python-dotenv`; always generate `.env.example`
-- Cache model loading with `@st.cache_resource` (Streamlit) or `@lru_cache(maxsize=1)` (Dash, Gradio)
+- Cache model loading with `@lru_cache(maxsize=1)`
 - Test underlying Python functions only, not UI callbacks or wiring
