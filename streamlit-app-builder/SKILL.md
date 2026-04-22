@@ -60,7 +60,7 @@ MLX support is encoded in the generated app as follows:
 - `pyproject.toml` declares MLX and transformers with environment markers so `uv sync` installs the right backend per host. Audio-to-audio apps declare `mlx-audio` with an Apple-only marker and omit the fallback dep.
 - `src/<app_name>/inference.py` reads `config.IS_APPLE_SILICON` and dispatches at runtime.
 
-**MLX model resolution:** query `https://huggingface.co/api/models?author=mlx-community&search=<base-name>` and pick the highest-download-count variant. If the base name has no `mlx-community` match, note "no MLX equivalent found" in the final report and generate the app with `transformers` only. Audio-to-audio inputs without a match fail at scaffold time with a clear error — there is no fallback to generate toward.
+**MLX model resolution:** query `https://huggingface.co/api/models?author=mlx-community&search=<base-name>` and pick the highest-download-count variant. If the base name has no `mlx-community` match, note "no MLX equivalent found" in the final report and generate the app with `transformers` only. Audio-to-audio inputs without an `mlx-community` match fail at scaffold time — there is no transformers fallback to generate toward. (A separate failure mode, where the model exists but no `mlx_audio.sts` class mapping is known, is handled by the dispatch table in the `inference.py` template.)
 
 ## Step 1: Identify and load the input
 
