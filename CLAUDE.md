@@ -63,7 +63,7 @@ uv run pytest test_<app>.py -v
 - `src/<app_name>/` — package with `config.py`, `inference.py` (MLX/transformers dispatch), `data.py`, `viz.py`, and `pages/`
 - `tests/` — pytest unit tests plus a `streamlit.testing.v1.AppTest` smoke test
 - `.streamlit/config.toml` — Streamlit server and theme config
-- `pyproject.toml` — uv-managed, platform-conditional deps (MLX on Apple Silicon, transformers elsewhere)
+- `pyproject.toml` — uv-managed, platform-conditional deps: `mlx-lm` / `mlx-vlm` / `mlx-audio` on Apple Silicon, `transformers` elsewhere (`audio-to-audio` is Apple-Silicon-only)
 - `.env.example` — documents every env var the app reads
 
 See `streamlit-app-builder/SKILL.md` for the full workflow.
