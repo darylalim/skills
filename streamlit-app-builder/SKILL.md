@@ -350,3 +350,180 @@ def generate_response(prompt: str, max_new_tokens: int | None = None) -> str:
 ```
 
 For non-text-generation pipelines, substitute the library calls: `mlx_vlm.load`/`generate` for vision-language, `mlx_whisper.transcribe` for ASR, `transformers.pipeline(<task>, ...)` for the transformers branch. Each variant still dispatches via `config.IS_APPLE_SILICON` and exposes a function named per the pipeline (`transcribe`, `caption`, `classify`, etc.) matching the page template.
+
+### `src/<app_name>/data.py` and `viz.py`
+
+Only generated when the source contains data transforms or visualizations. Each file holds pure functions (no Streamlit imports) extracted from the source — preserve the original logic verbatim; do not rewrite. Add type annotations on all signatures.
+
+### `src/<app_name>/pages/home.py`
+
+Uses the page body from `references/pipeline-tag-patterns.md` that matches the classified pattern. Every page module exposes `render() -> None`:
+
+```python
+"""Home page."""
+import streamlit as st
+
+
+def render() -> None:
+    st.title("...")
+    # Body per references/pipeline-tag-patterns.md for the classified pattern.
+```
+
+When the source has multiple independent flows, generate one page module per flow (`home.py`, `<feature>.py`) and register them all in `streamlit_app.py`'s navigation list.
+
+### `tests/conftest.py`
+
+Sets required env vars before any test imports the package. Provides a mocked-model fixture so inference tests do not touch the network.
+
+```python
+"""Test fixtures. Set required env vars before package import."""
+import os
+
+os.environ.setdefault("MODEL_ID", "test-model")
+# os.environ.setdefault("HF_TOKEN", "test-token")  # enable for gated models
+
+import pytest
+
+
+class _StubModel:
+    """Minimal interface used by inference.py."""
+    def generate(self, *args, **kwargs):
+        return [[0, 1, 2]]
+
+    def predict(self, x):
+        return [0] * len(x)
+
+
+@pytest.fixture
+def mock_model(monkeypatch):
+    from <app_name> import inference
+    monkeypatch.setattr(inference, "load_model", lambda: ("stub", _StubModel(), None))
+    return _StubModel()
+```
+
+### `tests/test_config.py`
+
+```python
+"""Tests for src/<app_name>/config.py."""
+import importlib
+import os
+
+import pytest
+
+
+def test_require_raises_when_missing(monkeypatch):
+    monkeypatch.delenv("MODEL_ID", raising=False)
+    # Re-import to trigger fail-fast with the missing var.
+    import <app_name>.config as cfg
+    importlib.reload(cfg)  # will raise
+
+# Note: because config.py raises at import, the assertion happens during reload.
+# Surround with pytest.raises to capture:
+def test_require_raises_explicit(monkeypatch):
+    monkeypatch.delenv("MODEL_ID", raising=False)
+    with pytest.raises(RuntimeError, match="MODEL_ID"):
+        import <app_name>.config as cfg
+        importlib.reload(cfg)
+
+
+def test_get_returns_default(monkeypatch):
+    monkeypatch.delenv("DEVICE", raising=False)
+    import <app_name>.config as cfg
+    importlib.reload(cfg)
+    assert cfg.DEVICE == "auto"
+
+
+def test_is_apple_silicon_detection(monkeypatch):
+    monkeypatch.setattr("sys.platform", "darwin")
+    monkeypatch.setattr("platform.machine", lambda: "arm64")
+    import <app_name>.config as cfg
+    importlib.reload(cfg)
+    assert cfg.IS_APPLE_SILICON is True
+```
+
+### `tests/test_inference.py`
+
+```python
+"""Tests for src/<app_name>/inference.py with mocked model."""
+from <app_name> import inference
+
+
+def test_generate_response_uses_loaded_model(mock_model):
+    out = inference.generate_response("hello", max_new_tokens=5)
+    assert isinstance(out, str)
+```
+
+### `tests/test_app_smoke.py`
+
+```python
+"""Smoke test: boots the app and runs the default page, asserts no exceptions."""
+from streamlit.testing.v1 import AppTest
+
+
+def test_app_boots():
+    at = AppTest.from_file("streamlit_app.py", default_timeout=30)
+    at.run()
+    assert not at.exception
+```
+
+### `.gitignore`
+
+```
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Tooling
+.ruff_cache/
+.pytest_cache/
+
+# OS
+.DS_Store
+```
+
+`.streamlit/secrets.toml` is ignored preemptively even though the skill does not create one — prevents accidental commits if the team later adds one for Streamlit Community Cloud deployment.
+
+### `README.md`
+
+The generated README covers setup, env vars, license, and gated-model instructions. Template:
+
+````markdown
+# <App Name>
+
+<One-line description extracted from the source>
+
+## Setup
+
+```bash
+uv sync
+cp .env.example .env      # then edit .env with your values
+streamlit run streamlit_app.py
+```
+
+## Environment variables
+
+| Name             | Required | Default | Description                                       |
+|------------------|----------|---------|---------------------------------------------------|
+| `MODEL_ID`       | yes      | —       | HuggingFace model identifier                      |
+| `MODEL_REVISION` | no       | `main`  | Model revision / branch / tag                     |
+| `DEVICE`         | no       | `auto`  | `auto` \| `cpu` \| `cuda` \| `mps`                |
+| `MAX_NEW_TOKENS` | no       | `512`   | Max tokens generated per call                     |
+| `HF_TOKEN`       | see notes | —      | Required for gated / private models; otherwise optional |
+
+## License & Commercial Use
+
+**Model:** `<org>/<model>` — license: `<license-identifier>`
+
+<When the license is in license-flags.md as restrictive, insert the flag text here>
+
+## Gated model
+
+<Included when the source model card has gated: true>
+Run `huggingface-cli login` on the host before first use, OR set `HF_TOKEN` in `.env` / your platform's secret store. Without a token, the app will fail fast at startup with a clear error.
+````
