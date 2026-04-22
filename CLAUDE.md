@@ -25,15 +25,21 @@ The `description` field drives invocation — make it concrete and trigger-drive
 
 ## App-Builder Skills
 
-All three skills (`dash-app-builder`, `gradio-app-builder`, `streamlit-app-builder`) share the same workflow and outputs. `dash-app-builder` additionally supports an Analytics Dashboard pattern with `dash-bootstrap-components`.
+`dash-app-builder` and `gradio-app-builder` share a single-file-app workflow. `streamlit-app-builder` diverged in the 2026-04-21 production rewrite — it produces a full modular package instead of a single file. `dash-app-builder` additionally supports an Analytics Dashboard pattern with `dash-bootstrap-components`.
+
+### `dash-app-builder` and `gradio-app-builder`
 
 **Workflow:** Analyze source (including notebook URL fetching) → Classify pattern → Generate app → Code quality → Testing
 
 **Outputs:**
-- `dash_app.py` / `gradio_app.py` / `streamlit_app.py` — single-file app with type annotations and inline comments
-- `test_dash_app.py` / `test_gradio_app.py` / `test_streamlit_app.py` — pytest unit tests for non-UI functions only
+- `dash_app.py` / `gradio_app.py` — single-file app with type annotations and inline comments
+- `test_dash_app.py` / `test_gradio_app.py` — pytest unit tests for non-UI functions only
 - `pyproject.toml` — uv-managed project
 - `.env.example` — all configurable env vars with placeholder defaults
+
+### `streamlit-app-builder`
+
+Produces a production-structured app package (see `streamlit-app-builder/SKILL.md` for the full workflow). Outputs include a `src/<app_name>/` package, a multipage `st.navigation` router at `streamlit_app.py`, `src/<app_name>/config.py` with env-based fail-fast validation, a `tests/` directory (including a `streamlit.testing.v1.AppTest` smoke test), and platform-conditional dependencies for MLX on Apple Silicon. Accepts notebooks, scripts, and HuggingFace model card URLs as input.
 
 **Toolchain:**
 ```bash
