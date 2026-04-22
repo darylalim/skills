@@ -598,7 +598,7 @@ Surface:
 
 1. **Files created**, grouped by purpose: app code, config, tests, project files.
 2. **Chosen model variant** — if MLX resolution returned a match, show `mlx-community/<variant>` alongside the original `<org>/<model>`; otherwise note "no MLX equivalent found, app uses transformers on all platforms."
-3. **Apple-Silicon-only warning (when applicable)** — if the classified pipeline is `audio-to-audio`, state: "This scaffold requires Apple Silicon at runtime. On non-Apple hosts, `uv sync` will not install `mlx-audio` and the app will error at model load."
+3. **Apple-Silicon-only warning (when applicable)** — if the classified pipeline is `audio-to-audio`, state: "This scaffold requires Apple Silicon at runtime. On non-Apple-Silicon hosts (including Intel Macs), `uv sync` will not install `mlx-audio` and the app will error at model load."
 4. **License + commercial-use flag** — from `references/license-flags.md`, if the model's license matches a flagged entry. Quote the flag text inline.
 5. **Gated-model setup** — when the source card had `gated: true`, show the `huggingface-cli login` command and the alternative `HF_TOKEN` path.
 6. **Exact local-run command:**
