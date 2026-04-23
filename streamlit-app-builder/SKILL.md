@@ -26,11 +26,11 @@ The skill **does not** produce, and the generated `README.md` documents these as
 
 ## Cross-cutting principles
 
-### 1. Always verify against live `docs.streamlit.io`
+### 1. Always verify against live `docs.streamlit.io` and `huggingface.co/docs`
 
-Streamlit's API evolves. Before generating code, fetch the current Streamlit docs for high-churn topics and confirm API shapes. Canonical URLs live in `references/streamlit-docs-index.md`.
+Streamlit and HuggingFace APIs evolve. Before generating code, fetch the current docs for high-churn topics and confirm API shapes. Canonical URLs live in `references/streamlit-docs-index.md` and `references/huggingface-docs-index.md`. See Step 4 for the full fetch rules, including which HF pages are library-conditional.
 
-**Mandatory fetches** before code generation:
+**Mandatory Streamlit fetches** before code generation:
 - Multipage + `st.navigation` + `st.Page`
 - Caching (`@st.cache_resource`, `@st.cache_data`)
 - App testing (`streamlit.testing.v1.AppTest`)
