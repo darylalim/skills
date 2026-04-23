@@ -64,7 +64,7 @@ MLX support is encoded in the generated app as follows:
 
 ## Step 1: Identify and load the input
 
-Classify the input into one of three types, then load it.
+Classify the input into one of four types, then load it.
 
 ### Local Python script (`.py`)
 
@@ -110,6 +110,45 @@ Resolve the model ID from the URL (strip `https://huggingface.co/` prefix; keep 
   > "List the models shown prominently on this organization's page. For each, give the model ID (`<org>/<name>`) and the pipeline_tag if visible (e.g., `text-generation`, `image-to-text`). Return up to 10 models. Skip datasets and Spaces."
 
   Filter the returned models: keep those with the same `pipeline_tag` as the input and a different model ID. Take up to 2 as *siblings*. Store the list as `siblings` in the Step 2 IR dict; Step 8 reads it to render the conditional "Sibling models" sub-section. If the fetch fails or the filter returns nothing, the check is silent — no report line, no error.
+
+### GitHub URL
+
+Classified **after** the `.ipynb` and HuggingFace branches — those already claim their URL shapes; this branch only sees GitHub `.py` blob URLs, repo-root URLs, or unsupported variants. Before pattern matching, strip URL fragments (`#L12`) and query strings (`?foo=bar`); preserve trailing-slash tolerance.
+
+**Classification patterns, in order:**
+
+| Match | Mode |
+|---|---|
+| `^https?://github\.com/([\w.-]+)/([\w.-]+)/blob/([^/]+)/(.+\.py)/?$` | **blob-`.py`** |
+| `^https?://github\.com/([\w.-]+)/([\w.-]+)/?$` | **repo-root** |
+| Other `github.com/...` URL (`tree/`, `pulls/`, `issues/`, `wiki/`, `commit/`, …) | **reject** |
+| Non-github.com host (`gist.github.com`, `gitlab.com`, `bitbucket.org`, raw pastebins) | **reject** |
+
+Branch names, tags, and 7–40-char commit SHAs all match the `[^/]+` ref class — no special-casing needed.
+
+**Rejection messages (exact text — no silent fallbacks):**
+- Unsupported `github.com` variant: *"Pass a blob URL to a `.py` file (`github.com/<o>/<r>/blob/<ref>/<path>.py`), a `.ipynb` file (handled by the notebook branch), or the repo root URL (`github.com/<o>/<r>`). `tree/` / `pulls/` / `commit/` / etc. are not supported."*
+- Non-github.com host: *"This skill accepts github.com URLs only. Clone locally and re-run with a file path."*
+
+**Blob-`.py` mode:**
+
+1. Resolve `blob/<ref>/<path>.py` → `https://raw.githubusercontent.com/<o>/<r>/<ref>/<path>.py`.
+2. Download with `curl -L`. On non-200 response: fail with the HTTP status code and resolved URL.
+3. Feed the downloaded source into Step 2's AST walker, unchanged.
+4. Populate IR: `source_url = <original input URL>`, `source_ref = <ref parsed from URL>`.
+
+**Repo-root mode:**
+
+1. `GET https://api.github.com/repos/<o>/<r>`. Capture `default_branch` and `license.spdx_id` from the response.
+   - HTTP 404 → fail: *"Repo not found or private: `<o>/<r>`."*
+   - HTTP 403 (rate limit) → fail: *"GitHub API rate limit hit. Retry later or set `GH_TOKEN` in the environment."* (Authenticated calls are a separate change.)
+   - Other non-200 → fail with status code and URL.
+2. Fetch `https://raw.githubusercontent.com/<o>/<r>/<default_branch>/README.md`. On 404: fail — *"Repo has no README.md at the default branch root."*
+3. Extract fenced code blocks matching `` ```(?:python|py)\n(.*?)``` `` (DOTALL). Take the **first match**. On zero matches: fail with *"No `python`-tagged code block found in `<o>/<r>`'s `README.md`. Pass a blob URL to the specific file to wrap — e.g., `github.com/<o>/<r>/blob/<default_branch>/inference.py`."*
+4. Run `ast.parse` on the extracted snippet. On `SyntaxError`: fail — *"First `python` block in README has syntax errors: `<msg>`. Pass a blob URL instead."*
+5. **Local-import guard.** Walk the AST for `Import` / `ImportFrom` nodes and reject **relative imports only** (`from . import x`, `from .foo import y`, `from .. import z`) with *"README snippet uses a relative import, which isn't resolvable from a standalone scaffold. Pass a blob URL to the source file instead."* All absolute imports pass through. If an absolute import turns out to be local-only (no PyPI counterpart), Step 6's `uv add <name>` fails there with a clear error — late-binding but reliable, and it avoids the false-positive/negative traps of heuristic local-import detection at this step.
+6. Feed the snippet into Step 2's AST walker.
+7. Populate IR: `source_url = <original input URL>`, `source_ref = <default_branch>`, `license = <license.spdx_id from API>`.
 
 ## Step 2: Build the internal representation
 
