@@ -105,6 +105,11 @@ Resolve the model ID from the URL (strip `https://huggingface.co/` prefix; keep 
 - **Metadata:** `https://huggingface.co/api/models/<id>` → JSON with `pipeline_tag`, `library_name`, `tags`, `gated`, `license`, `license_name`, `downloads`.
 - **README:** `https://huggingface.co/<id>/raw/main/README.md` → YAML frontmatter (fallback for metadata fields), first library-idiomatic code snippet (seeds the inference function), license text.
 - **MLX equivalent:** `https://huggingface.co/api/models?author=mlx-community&search=<base-name>` — always performed for HF-card inputs, regardless of the skill's host platform. The generated app's runtime dispatch decides whether to use it.
+- **Org freshness (conditional):** When `<org>` ∈ `{mlx-community, google, ibm-granite}`, WebFetch `https://huggingface.co/<org>` with the prompt:
+
+  > "List the models shown prominently on this organization's page. For each, give the model ID (`<org>/<name>`) and the pipeline_tag if visible (e.g., `text-generation`, `image-to-text`). Return up to 10 models. Skip datasets and Spaces."
+
+  Filter the returned models: keep those with the same `pipeline_tag` as the input and a different model ID. Take up to 2 as *siblings*. Pass the sibling list through to Step 8 for display. If the fetch fails or the filter returns nothing, the check is silent — no report line, no error.
 
 ## Step 2: Build the internal representation
 
