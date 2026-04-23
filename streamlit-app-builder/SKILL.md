@@ -109,7 +109,7 @@ Resolve the model ID from the URL (strip `https://huggingface.co/` prefix; keep 
 
   > "List the models shown prominently on this organization's page. For each, give the model ID (`<org>/<name>`) and the pipeline_tag if visible (e.g., `text-generation`, `image-to-text`). Return up to 10 models. Skip datasets and Spaces."
 
-  Filter the returned models: keep those with the same `pipeline_tag` as the input and a different model ID. Take up to 2 as *siblings*. Pass the sibling list through to Step 8 for display. If the fetch fails or the filter returns nothing, the check is silent — no report line, no error.
+  Filter the returned models: keep those with the same `pipeline_tag` as the input and a different model ID. Take up to 2 as *siblings*. Store the list as `siblings` in the Step 2 IR dict; Step 8 reads it to render the conditional "Sibling models" sub-section. If the fetch fails or the filter returns nothing, the check is silent — no report line, no error.
 
 ## Step 2: Build the internal representation
 
@@ -650,7 +650,7 @@ Surface:
 - [ ] `.env.example` covers every `_require` and `_get` key in `config.py`
 - [ ] `ruff check --fix`, `ruff format`, `ty check`, and `pytest` all pass clean
 - [ ] `README.md` documents setup, env vars, license, gated-model instructions
-- [ ] Report to user surfaces MLX resolution + license flags + non-goals reminder
+- [ ] Report to user surfaces MLX resolution + sibling models (when applicable) + license flags + non-goals reminder
 
 ## References
 
