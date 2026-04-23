@@ -600,13 +600,13 @@ streamlit run streamlit_app.py
 
 ## Environment variables
 
-| Name             | Required | Default | Description                                       |
-|------------------|----------|---------|---------------------------------------------------|
-| `MODEL_ID`       | yes      | —       | HuggingFace model identifier                      |
-| `MODEL_REVISION` | no       | `main`  | Model revision / branch / tag                     |
-| `DEVICE`         | no       | `auto`  | `auto` \| `cpu` \| `cuda` \| `mps`                |
-| `MAX_NEW_TOKENS` | no       | `512`   | Max tokens generated per call                     |
-| `HF_TOKEN`       | see notes | —      | Required for gated / private models; otherwise optional |
+| Name             | Required  | Default | Description                                       |
+|------------------|-----------|---------|---------------------------------------------------|
+| `MODEL_ID`       | yes       | —       | HuggingFace model identifier                      |
+| `MODEL_REVISION` | no        | `main`  | Model revision / branch / tag                     |
+| `DEVICE`         | no        | `auto`  | `auto` \| `cpu` \| `cuda` \| `mps`                |
+| `MAX_NEW_TOKENS` | no        | `512`   | Max tokens generated per call                     |
+| `HF_TOKEN`       | see notes | —       | Required for gated / private models; otherwise optional |
 
 ## License & Commercial Use
 
