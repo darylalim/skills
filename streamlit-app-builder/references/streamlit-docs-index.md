@@ -15,7 +15,6 @@ Canonical `docs.streamlit.io` URLs used by the `streamlit-app-builder` skill. Fe
 | App testing        | https://docs.streamlit.io/develop/concepts/app-testing                  |
 | `AppTest`          | https://docs.streamlit.io/develop/api-reference/app-testing/st.testing.v1.apptest |
 | Secrets            | https://docs.streamlit.io/develop/concepts/connections/secrets-management |
-| File organization  | https://docs.streamlit.io/develop/concepts/multipage-apps/overview                   |
 | Config             | https://docs.streamlit.io/develop/api-reference/configuration/config.toml |
 
 ## Pattern-conditional

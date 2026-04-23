@@ -37,7 +37,6 @@ Streamlit and HuggingFace APIs evolve. Before generating code, fetch the current
 - Caching (`@st.cache_resource`, `@st.cache_data`)
 - App testing (`streamlit.testing.v1.AppTest`)
 - Secrets
-- File organization
 - Plus the widget page(s) for the classified UI pattern (e.g., `st.chat_input` for chat, `st.audio_input` for ASR)
 
 ### 2. Prefer MLX on Apple Silicon
@@ -208,7 +207,6 @@ Fetched for every run — Streamlit is the output framework regardless of input 
 - `@st.cache_resource` + `@st.cache_data`
 - `streamlit.testing.v1.AppTest`
 - Secrets (informs `.gitignore` entry and README guidance)
-- File organization
 
 **Conditional — based on classified pattern:**
 - Chat: `st.chat_input`, `st.chat_message`
