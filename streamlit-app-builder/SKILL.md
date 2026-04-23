@@ -149,7 +149,7 @@ Fall through to "General Script" when ambiguous. The corresponding template is i
 
 ## Step 4: Fetch live Streamlit and HuggingFace docs
 
-Before writing code, fetch the relevant pages from `docs.streamlit.io` and `huggingface.co/docs`, and verify APIs match the templates below. Canonical URLs live in `references/streamlit-docs-index.md` and `references/huggingface-docs-index.md`.
+Before writing code, fetch the relevant pages from `docs.streamlit.io` and `huggingface.co/docs` and verify APIs match the templates below. Canonical URLs live in `references/streamlit-docs-index.md` and `references/huggingface-docs-index.md`.
 
 ### Streamlit docs
 
@@ -170,12 +170,12 @@ Before writing code, fetch the relevant pages from `docs.streamlit.io` and `hugg
 
 **When to fetch the baseline set** (Hub security tokens, `huggingface-cli` login):
 - **HF-card input:** always.
-- **Code / notebook input:** when Step 2's AST walk detected an import of `huggingface_hub`, `transformers`, or `diffusers`. If none of those is imported, skip HF docs entirely.
+- **Code / notebook input:** when Step 2's AST walk detected an import of `huggingface_hub`, `transformers`, or `diffusers`. If none of those is imported, skip the HF docs subsection entirely.
 
 **Library-conditional fetches:** include a row from `references/huggingface-docs-index.md` when its trigger matches:
 - `library_name == "transformers"` (HF-card) or `transformers` imported (code input) → Pipelines + Auto classes.
-- Additionally, when `pipeline_tag == "automatic-speech-recognition"` (or Step 3 classified the code input as ASR) → ASR task guide.
-- Additionally, when `pipeline_tag == "text-to-speech"` (or Step 3 classified the code input as TTS) → TTS task guide.
+- Additionally, when `pipeline_tag == "automatic-speech-recognition"` → ASR task guide.
+- Additionally, when `pipeline_tag == "text-to-speech"` → TTS task guide.
 - `library_name == "diffusers"` (HF-card) or `diffusers` imported (code input) → Loading pipelines + Quick tour.
 
 ### Rules for both sources
