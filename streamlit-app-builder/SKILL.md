@@ -663,7 +663,14 @@ Fix failures by adjusting the generated code or fixtures. Do not weaken tests to
 
 ## Step 8: Report to user
 
-**Source preamble (conditional):** when `source_url` is non-None, emit `Source: <source_url>` on its own line, followed by `Ref: <source_ref>` when non-None, followed by a blank line, before item #1 below. Omit the preamble entirely when `source_url` is None (HF-card / script / notebook paths) — no empty header.
+**Source preamble (conditional):** when `source_url` is non-None, emit the following before the numbered items below, followed by a blank line:
+
+```
+Source: <source_url>
+Ref: <source_ref>
+```
+
+The `Ref:` line is included only when `source_ref` is non-None. Omit the entire preamble when `source_url` is None (HF-card / script / notebook paths) — no empty header.
 
 Surface:
 
