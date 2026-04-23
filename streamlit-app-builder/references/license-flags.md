@@ -10,10 +10,10 @@ Licenses that the `streamlit-app-builder` skill flags in generated `README.md` u
 | `cc-by-nc-sa-*`                   | ❌ Not allowed                                                    | Non-commercial + share-alike                                          |
 | `cc-by-nc-nd-*`                   | ❌ Not allowed                                                    | Non-commercial + no-derivatives                                       |
 | `llama2`                          | ⚠️ Restricted                                                    | Llama 2 Community License — free under 700M MAU threshold             |
-| `llama3`                                      | ⚠️ Restricted                                                    | Llama Community License — 700M MAU threshold                          |
-| `llama3.1`                                    | ⚠️ Restricted                                                    | Llama Community License — 700M MAU threshold                          |
-| `llama3.2`                                    | ⚠️ Restricted                                                    | Llama Community License — 700M MAU threshold                          |
-| `llama3.3`                                    | ⚠️ Restricted                                                    | Llama Community License — 700M MAU threshold                          |
+| `llama3`                          | ⚠️ Restricted                                                    | Llama Community License — 700M MAU threshold                          |
+| `llama3.1`                        | ⚠️ Restricted                                                    | Llama Community License — 700M MAU threshold                          |
+| `llama3.2`                        | ⚠️ Restricted                                                    | Llama Community License — 700M MAU threshold                          |
+| `llama3.3`                        | ⚠️ Restricted                                                    | Llama Community License — 700M MAU threshold                          |
 | `gemma`                           | ⚠️ Restricted                                                    | Gemma Terms of Use — use-case restrictions apply                      |
 | `other` with `license_name: mistral-ai-research-license` | ❌ Research-only                           | Mistral Research License                                              |
 | `openrail`, `bigscience-openrail-m`, `creativeml-openrail-m` | ⚠️ Use-case restricted                | RAIL licenses — enumerated prohibited uses                            |
