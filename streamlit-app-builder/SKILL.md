@@ -165,10 +165,12 @@ Produce this structure in memory, consumed by all subsequent steps:
     "license": "<SPDX or license_name>",
     "mlx_equivalent": "<mlx-community/...>" or None,
     "siblings": ["<org>/<model>", ...],   # from Step 1's org-freshness check; [] when the org is not a priority org or no same-task siblings were found
+    "source_url": "<original input URL>" or None,   # populated by GitHub URL branch only
+    "source_ref": "<resolved git ref>" or None,     # populated by GitHub URL branch only
 }
 ```
 
-**Absent-value convention:** scalar fields (`inference_fn`, `mlx_equivalent`) use `None` when absent; list fields (`data_fns`, `viz_fns`, `deps`, `siblings`) use `[]`. New fields follow the same pattern.
+**Absent-value convention:** scalar fields (`inference_fn`, `mlx_equivalent`, `source_url`, `source_ref`) use `None` when absent; list fields (`data_fns`, `viz_fns`, `deps`, `siblings`) use `[]`. New fields follow the same pattern. Existing `.py` / `.ipynb` / HF-card branches leave `source_url` / `source_ref` as `None` — only the GitHub URL branch populates them.
 
 **For code inputs (script or notebook):** AST-parse the code (`ast.parse` + walk `FunctionDef`) to extract top-level function signatures with type annotations. Classify each function as inference (calls `.predict`, `.generate`, `.forward`, `.__call__` on a model), data (reads/writes files, manipulates DataFrames), or viz (returns a matplotlib/plotly figure). Collect imports for dependency inference.
 
