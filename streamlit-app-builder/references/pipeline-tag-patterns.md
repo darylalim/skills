@@ -139,7 +139,7 @@ if st.button("Speak") and text:
 
 `pipeline_tag`: `audio-to-audio`
 
-**Apple Silicon only.** The generated `inference.py` raises a clear `RuntimeError` on non-Apple-Silicon hosts.
+**Apple-Silicon-only.** The generated `inference.py` raises a clear `RuntimeError` on non-Apple-Silicon hosts.
 
 ```python
 import streamlit as st

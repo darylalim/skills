@@ -46,7 +46,7 @@ When the source artifact references a model with an MLX-converted equivalent on 
 
 **MLX backend index:**
 
-| `pipeline_tag` | MLX module | PyPI | Apple-only? | Transformers fallback |
+| `pipeline_tag` | MLX module | PyPI | Apple-Silicon-only? | Transformers fallback |
 |---|---|---|---|---|
 | `text-generation`, `conversational` | `mlx_lm` | `mlx-lm` | no | `transformers` |
 | `image-to-text`, `image-text-to-text` | `mlx_vlm` | `mlx-vlm` | no | `transformers` |
@@ -54,12 +54,12 @@ When the source artifact references a model with an MLX-converted equivalent on 
 | `text-to-speech` | `mlx_audio.tts` | `mlx-audio` | no | `transformers[audio]` (SpeechT5 / Bark / Parler-TTS) |
 | `audio-to-audio` | `mlx_audio.sts` | `mlx-audio` | **yes** | — (`RuntimeError` at model load off Apple Silicon) |
 
-Apple-only rows install no transformers fallback; `inference.py` raises a clear `RuntimeError` at model load on non-Apple-Silicon hosts, and the generated `README.md` notes the platform requirement.
+Apple-Silicon-only rows install no transformers fallback; `inference.py` raises a clear `RuntimeError` at model load on non-Apple-Silicon hosts, and the generated `README.md` notes the platform requirement.
 
 The MLX lookup is independent of where the skill itself runs. A Linux developer scaffolding from an HF model card still produces an app with MLX support wired in — runtime dispatch activates MLX only when a user later runs the app on a Mac. (Exception: `audio-to-audio` apps run on Apple Silicon only, by design.)
 
 MLX support is encoded in the generated app as follows:
-- `pyproject.toml` declares MLX and transformers with environment markers so `uv sync` installs the right backend per host. Audio-to-audio apps declare `mlx-audio` with an Apple-only marker and omit the fallback dep.
+- `pyproject.toml` declares MLX and transformers with environment markers so `uv sync` installs the right backend per host. Audio-to-audio apps declare `mlx-audio` with an Apple-Silicon-only marker and omit the fallback dep.
 - `src/<app_name>/inference.py` reads `config.IS_APPLE_SILICON` and dispatches at runtime.
 
 **MLX model resolution:** query `https://huggingface.co/api/models?author=mlx-community&search=<base-name>` and pick the highest-download-count variant. If the base name has no `mlx-community` match, note "no MLX equivalent found" in the final report and generate the app with `transformers` only. Audio-to-audio inputs without an `mlx-community` match fail at scaffold time — there is no transformers fallback to generate toward. (A separate failure mode, where the model exists but no `mlx_audio.sts` class mapping is known, is handled by the dispatch table in the `inference.py` template.)
@@ -439,7 +439,7 @@ For non-text-generation pipelines, each variant still dispatches via `config.IS_
 | `image-to-text`, `image-text-to-text` | `from mlx_vlm import load, generate` → `generate(model, processor, formatted_prompt, image)` | `pipeline("image-to-text", model=config.MODEL_ID)` |
 | `automatic-speech-recognition` | `from mlx_audio.stt.utils import load` → `load(id).generate(audio).text` | `pipeline("automatic-speech-recognition", model=config.MODEL_ID)` |
 | `text-to-speech` | `from mlx_audio.tts.utils import load_model`; iterate `load_model(id).generate(text=..., voice=...)` and concatenate each result's `.audio` | `pipeline("text-to-speech", model=config.MODEL_ID)` |
-| `audio-to-audio` | `mlx_audio.sts.<ModelClass>.from_pretrained(id)` + model-specific method (e.g. `.enhance(audio)`, `.separate_long(...)`). **Apple-only.** | — (`RuntimeError` on non-Apple-Silicon hosts) |
+| `audio-to-audio` | `mlx_audio.sts.<ModelClass>.from_pretrained(id)` + model-specific method (e.g. `.enhance(audio)`, `.separate_long(...)`). **Apple-Silicon-only.** | — (`RuntimeError` on non-Apple-Silicon hosts) |
 
 For `audio-to-audio`, the exact `mlx_audio.sts` class and method depend on the model (SAM-Audio → `separate_long`, MossFormer2 → `enhance`, DeepFilterNet → `enhance`). Step 2 maps the HF card's tags/name to a known `mlx_audio.sts` class; if no mapping exists, the skill reports "no supported STS backend" and emits a General Script page with a manual-wiring TODO instead of scaffolding broken inference code.
 
@@ -644,7 +644,7 @@ Versions are not pinned on the command line — `uv add` resolves the current la
 | Image / vision / diffusion           | `diffusers`, `accelerate`, `pillow`    |
 | Automatic speech recognition         | `"mlx-audio;platform_machine=='arm64' and sys_platform=='darwin'"`, `"transformers[audio];platform_machine!='arm64' or sys_platform!='darwin'"` |
 | Text to speech                       | `"mlx-audio;platform_machine=='arm64' and sys_platform=='darwin'"`, `"transformers[audio];platform_machine!='arm64' or sys_platform!='darwin'"` |
-| Audio to audio (STS)                 | `"mlx-audio;platform_machine=='arm64' and sys_platform=='darwin'"` — **no fallback** (Apple-only) |
+| Audio to audio (STS)                 | `"mlx-audio;platform_machine=='arm64' and sys_platform=='darwin'"` — **no fallback** (Apple-Silicon-only) |
 | Vision-language                      | `"mlx-vlm;platform_machine=='arm64' and sys_platform=='darwin'"` |
 | Embeddings                           | `sentence-transformers`                |
 | Data processing                      | `pandas`, `pyarrow`                    |
