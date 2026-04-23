@@ -2,7 +2,7 @@
 
 Canonical `docs.streamlit.io` URLs used by the `streamlit-app-builder` skill. Fetch these at skill-run time to verify current APIs before generating code.
 
-## High-churn topics (mandatory fetch before generation)
+## Baseline
 
 | Topic              | URL                                                                     |
 |--------------------|-------------------------------------------------------------------------|
@@ -18,7 +18,7 @@ Canonical `docs.streamlit.io` URLs used by the `streamlit-app-builder` skill. Fe
 | File organization  | https://docs.streamlit.io/develop/concepts/multipage-apps/overview                   |
 | Config             | https://docs.streamlit.io/develop/api-reference/configuration/config.toml |
 
-## Widget APIs (fetch the subset relevant to the classified UI pattern)
+## Pattern-conditional
 
 | Widget              | URL                                                                     |
 |---------------------|-------------------------------------------------------------------------|
@@ -42,3 +42,9 @@ Canonical `docs.streamlit.io` URLs used by the `streamlit-app-builder` skill. Fe
 |---------------------|---------------------------------------|
 | Docs root           | https://docs.streamlit.io/            |
 | API reference index | https://docs.streamlit.io/develop/api-reference |
+
+## Out of scope
+
+- Deployment docs (Community Cloud, Snowflake) — the skill's non-goals explicitly defer deployment to the consuming team.
+- `st.connection` / database integrations — the skill does not scaffold data layers.
+- Advanced theming / custom components — teams override `.streamlit/config.toml` directly per their branding.

@@ -129,6 +129,8 @@ Produce this structure in memory, consumed by all subsequent steps:
 }
 ```
 
+**Absent-value convention:** scalar fields (`inference_fn`, `mlx_equivalent`) use `None` when absent; list fields (`data_fns`, `viz_fns`, `deps`, `siblings`) use `[]`. New fields follow the same pattern.
+
 **For code inputs (script or notebook):** AST-parse the code (`ast.parse` + walk `FunctionDef`) to extract top-level function signatures with type annotations. Classify each function as inference (calls `.predict`, `.generate`, `.forward`, `.__call__` on a model), data (reads/writes files, manipulates DataFrames), or viz (returns a matplotlib/plotly figure). Collect imports for dependency inference.
 
 **For HF model card inputs:** Map fields directly from the API JSON. Derive `deps` from `library_name` + `tags` (e.g., `transformers` → `transformers` + `torch`; `diffusers` → `diffusers` + `transformers` + `torch`; `sentence-transformers` → `sentence-transformers` + `torch`). Extract the first library-idiomatic snippet from the README as the seed for `inference.py`'s transformers branch.
@@ -153,6 +155,8 @@ Fall through to "General Script" when ambiguous. The corresponding template is i
 Before writing code, fetch the relevant pages from `docs.streamlit.io` and `huggingface.co/docs` and verify APIs match the templates below. Canonical URLs live in `references/streamlit-docs-index.md` and `references/huggingface-docs-index.md`.
 
 ### Streamlit docs
+
+Fetched for every run — Streamlit is the output framework regardless of input type.
 
 **Always:**
 - Multipage + `st.navigation` + `st.Page`
@@ -655,6 +659,6 @@ Surface:
 ## References
 
 - `references/streamlit-docs-index.md` — canonical Streamlit docs URLs for live fetches
-- `references/huggingface-docs-index.md` — canonical huggingface.co/docs URLs for live fetches
+- `references/huggingface-docs-index.md` — canonical HuggingFace docs URLs (under `huggingface.co/docs`) for live fetches
 - `references/pipeline-tag-patterns.md` — HF pipeline_tag → UI pattern catalog
 - `references/license-flags.md` — commercial-use flags for model licenses
