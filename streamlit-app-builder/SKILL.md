@@ -125,6 +125,7 @@ Produce this structure in memory, consumed by all subsequent steps:
     "is_gated": bool,
     "license": "<SPDX or license_name>",
     "mlx_equivalent": "<mlx-community/...>" or None,
+    "siblings": ["<org>/<model>", ...],   # from Step 1's org-freshness check; [] when the org is not a priority org or no same-task siblings were found
 }
 ```
 
@@ -619,6 +620,16 @@ Surface:
 
 1. **Files created**, grouped by purpose: app code, config, tests, project files.
 2. **Chosen model variant** — if MLX resolution returned a match, show `mlx-community/<variant>` alongside the original `<org>/<model>`; otherwise note "no MLX equivalent found, app uses transformers on all platforms."
+
+   **Sibling models (conditional)** — when Step 2's `siblings` list is non-empty, append:
+
+   ```
+   Other <org> models for this task (consider if you want something newer/different):
+     - <org>/<sibling1>
+     - <org>/<sibling2>
+   ```
+
+   Omit entirely when `siblings` is empty — no empty header.
 3. **Apple-Silicon-only warning (when applicable)** — if the classified pipeline is `audio-to-audio`, state: "This scaffold requires Apple Silicon at runtime. On non-Apple-Silicon hosts (including Intel Macs), `uv sync` will not install `mlx-audio` and the app will error at model load."
 4. **License + commercial-use flag** — from `references/license-flags.md`, if the model's license matches a flagged entry. Quote the flag text inline.
 5. **Gated-model setup** — when the source card had `gated: true`, show the `huggingface-cli login` command and the alternative `HF_TOKEN` path.
