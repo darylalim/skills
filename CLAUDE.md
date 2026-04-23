@@ -58,7 +58,7 @@ uv run pytest test_<app>.py -v
 
 **Workflow:** Analyze source (script / notebook / HF model card URL / GitHub URL) → Fetch live Streamlit and HuggingFace docs → Classify UI pattern → Scaffold production package → Code quality → Testing
 
-GitHub URL handling accepts two shapes: `github.com/<o>/<r>/blob/<ref>/<path>.py` (resolved to raw) and `github.com/<o>/<r>` (repo root; README's first `python`/`py` fenced block extracted). Other `github.com/...` paths (`tree/`, `pulls/`, `commit/`, etc.) and non-github.com hosts are rejected with explicit remedies. The new branch populates `source_url` / `source_ref` in the IR, which thread through to the scaffolded README (`**Source:**` line) and Step 8 report preamble.
+GitHub URL inputs support two shapes: blob-`.py` URL and repo root (README's first `python`/`py` fenced block extracted). See `streamlit-app-builder/SKILL.md` Step 1 for the full classification, rejection rules, and IR threading.
 
 **Outputs:**
 - `streamlit_app.py` — `st.navigation` router entrypoint

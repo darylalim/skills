@@ -7,7 +7,7 @@ description: >
   a Streamlit app for production, wrap a notebook into a Streamlit app,
   generate a UI for a HuggingFace model, scaffold from a GitHub repo or a
   specific GitHub file, any link to a `.ipynb` or to
-  `huggingface.co/<org>/<model>` or to `github.com/<o>/<r>`, turn a script
+  `huggingface.co/<org>/<model>` or to `github.com/<owner>/<repo>`, turn a script
   into a multipage Streamlit app, scaffold a Streamlit app intended for
   paying customers.
 ---
@@ -131,24 +131,24 @@ Classified **after** the `.ipynb` and HuggingFace branches — those already cla
 Branch names, tags, and 7–40-char commit SHAs all match the `[^/]+` ref class. **Limitation:** slash-containing branch names (e.g., `feature/foo-bar`) are not supported — the regex captures the first segment as `<ref>` and the rest as `<path>`, which can mis-parse. Ask users to pass a blob URL using the default branch, a tag, or a commit SHA instead.
 
 **Rejection messages (exact text — no silent fallbacks):**
-- Unsupported `github.com` variant: *"Pass a blob URL to a `.py` file (`github.com/<o>/<r>/blob/<ref>/<path>.py`), a `.ipynb` file (handled by the notebook branch), or the repo root URL (`github.com/<o>/<r>`). `tree/` / `pulls/` / `commit/` / etc. are not supported."*
+- Unsupported `github.com` variant: *"Pass a blob URL to a `.py` file (`github.com/<owner>/<repo>/blob/<ref>/<path>.py`), a `.ipynb` file (handled by the notebook branch), or the repo root URL (`github.com/<owner>/<repo>`). `tree/` / `pulls/` / `commit/` / etc. are not supported."*
 - Non-github.com host: *"This skill accepts github.com URLs only. Clone locally and re-run with a file path."*
 
 **Blob-`.py` mode:**
 
-1. Resolve `blob/<ref>/<path>.py` → `https://raw.githubusercontent.com/<o>/<r>/<ref>/<path>.py`.
-2. Download with `curl -L`. On non-200 response: fail with the HTTP status code and resolved URL.
+1. Resolve `blob/<ref>/<path>.py` → `https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>.py`.
+2. Download with `curl -L --max-time 30`. On non-200 response: fail with the HTTP status code and resolved URL. If the status is 404 and the original URL had multiple path segments between `blob/` and the `.py` file, the branch name may contain a slash (e.g., `feature/foo-bar`) — the regex mis-parses such URLs; ask the user to pass a URL using the default branch, a tag, or a commit SHA.
 3. Feed the downloaded source into Step 2's AST walker, unchanged.
 4. Populate IR: `source_url = <original input URL>`, `source_ref = <ref parsed from URL>`, `license = None` (blob mode makes no GitHub API call, so SPDX metadata is unavailable — downstream README / Step 8 license-flag treat `None` per the absent-value convention).
 
 **Repo-root mode:**
 
-1. `GET https://api.github.com/repos/<o>/<r>`. Capture `default_branch` and `license.spdx_id` from the response.
-   - HTTP 404 → fail: *"Repo not found or private: `<o>/<r>`."*
+1. `GET https://api.github.com/repos/<owner>/<repo>`. Capture `default_branch` and `license.spdx_id` from the response. When the repo has no detected license, the API returns `license: null` (or omits the `license` object entirely) — store `license = None` in that case, matching blob-`.py` mode.
+   - HTTP 404 → fail: *"Repo not found or private: `<owner>/<repo>`."*
    - HTTP 403 (rate limit) → fail: *"GitHub API rate limit hit. Retry later or set `GH_TOKEN` in the environment."* (Authenticated calls are a separate change.)
    - Other non-200 → fail with status code and URL.
-2. Fetch `https://raw.githubusercontent.com/<o>/<r>/<default_branch>/README.md`. On 404: fail — *"Repo has no README.md at the default branch root."*
-3. Extract fenced code blocks matching `` ```(?:python|py)\n(.*?)``` `` (DOTALL). Take the **first match**. On zero matches: fail with *"No `python`-tagged code block found in `<o>/<r>`'s `README.md`. Pass a blob URL to the specific file to wrap — e.g., `github.com/<o>/<r>/blob/<default_branch>/inference.py`."*
+2. Fetch `https://raw.githubusercontent.com/<owner>/<repo>/<default_branch>/README.md` with `curl -L --max-time 30`. On 404, retry once with lowercase `readme.md` (case-sensitivity varies by repo). If both fail, emit: *"Repo has no `README.md` or `readme.md` at the default branch root. If the repo uses a different filename (e.g., `Readme.md`, `README.rst`), pass a blob URL to the file you want to wrap instead."*
+3. Extract fenced code blocks matching `` ```(?:python|py)\n(.*?)``` `` (DOTALL). Take the **first match whose content is not purely install/setup commands** — skip blocks whose every non-comment line begins with `pip`, `conda`, `uv add`, `poetry add`, `!pip`, or `brew` (badge / install snippets that commonly precede the real usage example). On zero matching blocks (either no `python`-tagged blocks at all, or all are install-only): fail with *"No usable `python`-tagged code block found in `<owner>/<repo>`'s `README.md` (install-only blocks skipped). Pass a blob URL to the specific file to wrap — e.g., `github.com/<owner>/<repo>/blob/<default_branch>/inference.py`."*
 4. Run `ast.parse` on the extracted snippet. On `SyntaxError`: fail — *"First `python` block in README has syntax errors: `<msg>`. Pass a blob URL instead."*
 5. **Local-import guard.** Walk the AST for `Import` / `ImportFrom` nodes and reject **relative imports only** (`from . import x`, `from .foo import y`, `from .. import z`) with *"README snippet uses a relative import, which isn't resolvable from a standalone scaffold. Pass a blob URL to the source file instead."* All absolute imports pass through. If an absolute import turns out to be local-only (no PyPI counterpart), Step 6's `uv add <name>` fails there with a clear error — late-binding but reliable, and it avoids the false-positive/negative traps of heuristic local-import detection at this step.
 6. Feed the snippet into Step 2's AST walker.
@@ -667,14 +667,13 @@ Fix failures by adjusting the generated code or fixtures. Do not weaken tests to
 
 ## Step 8: Report to user
 
-**Source preamble (conditional):** when `source_url` is non-None, emit the following before the numbered items below, followed by a blank line:
+**Source preamble (conditional):** when `source_url` is non-None, emit the following on a single line before the numbered items, followed by a blank line:
 
 ```
-Source: <source_url>
-Ref: <source_ref>
+Source: <source_url> (ref: <source_ref>)
 ```
 
-The `Ref:` line is included only when `source_ref` is non-None. Omit the entire preamble when `source_url` is None (HF-card / script / notebook paths) — no empty header.
+When `source_ref` is None, omit the `(ref: …)` parenthetical. When `source_url` is None (HF-card / script / notebook paths), omit the entire preamble — no empty header.
 
 Surface:
 
@@ -692,7 +691,7 @@ Surface:
    Omit entirely when `siblings` is empty — no empty header.
 3. **Apple-Silicon-only warning (when applicable)** — if the classified pipeline is `audio-to-audio`, state: "This scaffold requires Apple Silicon at runtime. On non-Apple-Silicon hosts (including Intel Macs), `uv sync` will not install `mlx-audio` and the app will error at model load."
 4. **License + commercial-use flag** — from `references/license-flags.md`, if the model's license matches a flagged entry. Quote the flag text inline.
-5. **Gated-model setup** — when the source card had `gated: true`, show the `huggingface-cli login` command and the alternative `HF_TOKEN` path.
+5. **Gated-model setup** — when `is_gated` is `true` in the IR (only HF-card inputs set this today; script / notebook / GitHub inputs leave it `false`), show the `huggingface-cli login` command and the alternative `HF_TOKEN` path.
 6. **Exact local-run command:**
 
    ```bash
@@ -710,7 +709,7 @@ Surface:
 - [ ] `.env.example` covers every `_require` and `_get` key in `config.py`
 - [ ] `ruff check --fix`, `ruff format`, `ty check`, and `pytest` all pass clean
 - [ ] `README.md` documents setup, env vars, license, gated-model instructions
-- [ ] Report to user surfaces MLX resolution + sibling models (when applicable) + license flags + non-goals reminder
+- [ ] Report to user surfaces Source + Ref (when GitHub input) + MLX resolution + sibling models (when applicable) + license flags + non-goals reminder
 
 ## References
 
