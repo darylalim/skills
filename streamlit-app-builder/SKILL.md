@@ -113,7 +113,9 @@ Resolve the model ID from the URL (strip `https://huggingface.co/` prefix; keep 
 
 ### GitHub URL
 
-Classified **after** the `.ipynb` and HuggingFace branches — those already claim their URL shapes; this branch only sees GitHub `.py` blob URLs, repo-root URLs, or unsupported variants. Before pattern matching, strip URL fragments (`#L12`) and query strings (`?foo=bar`); preserve trailing-slash tolerance.
+Classified **after** the `.ipynb` and HuggingFace branches — those already claim their URL shapes; this branch only sees GitHub `.py` blob URLs, repo-root URLs, or unsupported variants.
+
+**URL normalization (required before pattern matching):** strip any query string (`?foo=bar`) and fragment (`#L12`) from the input URL, and apply the classification patterns below to the cleaned URL only. Trailing-slash tolerance is preserved by the patterns themselves. Example: `…/inference.py?ref=main#L42` → `…/inference.py`.
 
 **Classification patterns, in order:**
 
@@ -172,7 +174,7 @@ Produce this structure in memory, consumed by all subsequent steps:
 
 **Absent-value convention:** scalar fields (`inference_fn`, `mlx_equivalent`, `source_url`, `source_ref`) use `None` when absent; list fields (`data_fns`, `viz_fns`, `deps`, `siblings`) use `[]`. New fields follow the same pattern. Existing `.py` / `.ipynb` / HF-card branches leave `source_url` / `source_ref` as `None` — only the GitHub URL branch populates them.
 
-**For code inputs (script or notebook):** AST-parse the code (`ast.parse` + walk `FunctionDef`) to extract top-level function signatures with type annotations. Classify each function as inference (calls `.predict`, `.generate`, `.forward`, `.__call__` on a model), data (reads/writes files, manipulates DataFrames), or viz (returns a matplotlib/plotly figure). Collect imports for dependency inference.
+**For code inputs (script or notebook):** AST-parse the code (`ast.parse` + walk `FunctionDef`) to extract top-level function signatures with type annotations. Classify each function as inference (calls `.predict`, `.generate`, `.forward`, `.__call__` on a model), data (reads/writes files, manipulates DataFrames), or viz (returns a matplotlib/plotly figure). Collect imports for dependency inference. **MLX resolution is not performed for code inputs** — `mlx_equivalent` stays `None` and `siblings` stays `[]` even when the snippet contains `from_pretrained("<org>/<model>")` string literals. MLX lookup fires only for HF-card URL inputs, per Step 1.
 
 **For HF model card inputs:** Map fields directly from the API JSON. Derive `deps` from `library_name` + `tags` (e.g., `transformers` → `transformers` + `torch`; `diffusers` → `diffusers` + `transformers` + `torch`; `sentence-transformers` → `sentence-transformers` + `torch`). Extract the first library-idiomatic snippet from the README as the seed for `inference.py`'s transformers branch.
 
