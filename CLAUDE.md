@@ -56,7 +56,7 @@ uv run pytest test_<app>.py -v
 
 ### `streamlit-app-builder`
 
-**Workflow:** Analyze source (script / notebook / HF model card URL) → Fetch live Streamlit docs → Classify UI pattern → Scaffold production package → Code quality → Testing
+**Workflow:** Analyze source (script / notebook / HF model card URL) → Fetch live Streamlit and HuggingFace docs → Classify UI pattern → Scaffold production package → Code quality → Testing
 
 **Outputs:**
 - `streamlit_app.py` — `st.navigation` router entrypoint
