@@ -124,7 +124,7 @@ Classified **after** the `.ipynb` and HuggingFace branches — those already cla
 | Other `github.com/...` URL (`tree/`, `pulls/`, `issues/`, `wiki/`, `commit/`, …) | **reject** |
 | Non-github.com host (`gist.github.com`, `gitlab.com`, `bitbucket.org`, raw pastebins) | **reject** |
 
-Branch names, tags, and 7–40-char commit SHAs all match the `[^/]+` ref class — no special-casing needed.
+Branch names, tags, and 7–40-char commit SHAs all match the `[^/]+` ref class. **Limitation:** slash-containing branch names (e.g., `feature/foo-bar`) are not supported — the regex captures the first segment as `<ref>` and the rest as `<path>`, which can mis-parse. Ask users to pass a blob URL using the default branch, a tag, or a commit SHA instead.
 
 **Rejection messages (exact text — no silent fallbacks):**
 - Unsupported `github.com` variant: *"Pass a blob URL to a `.py` file (`github.com/<o>/<r>/blob/<ref>/<path>.py`), a `.ipynb` file (handled by the notebook branch), or the repo root URL (`github.com/<o>/<r>`). `tree/` / `pulls/` / `commit/` / etc. are not supported."*
