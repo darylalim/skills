@@ -28,7 +28,7 @@ if prompt := st.chat_input("Message"):
     st.session_state.messages.append({"role": "assistant", "content": response})
 ```
 
-## Classification (text)
+## Text classification
 
 `pipeline_tag`: `text-classification`, `zero-shot-classification`
 
@@ -193,7 +193,7 @@ if img and st.button("Caption"):
     st.write(caption(img))
 ```
 
-## Image-to-image / text-to-image
+## Image to image / text to image
 
 `pipeline_tag`: `image-to-image`, `text-to-image`
 
