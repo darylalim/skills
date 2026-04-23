@@ -707,7 +707,7 @@ Surface:
 - [ ] `.env.example` covers every `_require` and `_get` key in `config.py`
 - [ ] `ruff check --fix`, `ruff format`, `ty check`, and `pytest` all pass clean
 - [ ] `README.md` documents setup, env vars, license, gated-model instructions
-- [ ] Report to user surfaces Source + Ref (when GitHub input) + MLX resolution + sibling models (when applicable) + license flags + non-goals reminder
+- [ ] Step 8 report emitted per source-type conditions
 
 ## References
 
