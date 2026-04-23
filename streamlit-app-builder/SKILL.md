@@ -128,7 +128,7 @@ Classified **after** the `.ipynb` and HuggingFace branches — those already cla
 | Other `github.com/...` URL (`tree/`, `pulls/`, `issues/`, `wiki/`, `commit/`, …) | **reject** |
 | Non-github.com host (`gist.github.com`, `gitlab.com`, `bitbucket.org`, raw pastebins) | **reject** |
 
-Branch names, tags, and 7–40-char commit SHAs all match the `[^/]+` ref class. **Limitation:** slash-containing branch names (e.g., `feature/foo-bar`) are not supported — the regex captures the first segment as `<ref>` and the rest as `<path>`, which can mis-parse. Ask users to pass a blob URL using the default branch, a tag, or a commit SHA instead.
+Branch names, tags, and 7–40-char commit SHAs all match the `[^/]+` ref class. **Limitation:** slash-containing branch names (e.g., `feature/foo-bar`) are not supported — the regex captures the first segment as `<ref>` and the rest as `<path>`, which can mis-parse. Ask the user to pass a blob URL using the default branch, a tag, or a commit SHA instead.
 
 **Rejection messages (exact text — no silent fallbacks):**
 - Unsupported `github.com` variant: *"Pass a blob URL to a `.py` file (`github.com/<owner>/<repo>/blob/<ref>/<path>.py`), a `.ipynb` file (handled by the notebook branch), or the repo root URL (`github.com/<owner>/<repo>`). `tree/` / `pulls/` / `commit/` / etc. are not supported."*
@@ -137,7 +137,7 @@ Branch names, tags, and 7–40-char commit SHAs all match the `[^/]+` ref class.
 **Blob-`.py` mode:**
 
 1. Resolve `blob/<ref>/<path>.py` → `https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>.py`.
-2. Download with `curl -L --max-time 30`. On non-200 response: fail with the HTTP status code and resolved URL. If the status is 404 and the original URL had multiple path segments between `blob/` and the `.py` file, the branch name may contain a slash (e.g., `feature/foo-bar`) — the regex mis-parses such URLs; ask the user to pass a URL using the default branch, a tag, or a commit SHA.
+2. Download with `curl -L --max-time 30`. On non-200 response: fail with the HTTP status code and resolved URL. If the status is 404 and the original URL had multiple path segments between `blob/` and the `.py` file, the branch name may contain a slash (e.g., `feature/foo-bar`) — the regex mis-parses such URLs; ask the user to pass a blob URL using the default branch, a tag, or a commit SHA instead.
 3. Feed the downloaded source into Step 2's AST walker, unchanged.
 4. Populate IR: `source_url = <original input URL>`, `source_ref = <ref parsed from URL>`, `license = None` (blob mode makes no GitHub API call, so SPDX metadata is unavailable — downstream README / Step 8 license-flag treat `None` per the absent-value convention).
 
