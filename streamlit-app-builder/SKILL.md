@@ -663,6 +663,8 @@ Fix failures by adjusting the generated code or fixtures. Do not weaken tests to
 
 ## Step 8: Report to user
 
+**Source preamble (conditional):** when `source_url` is non-None, emit `Source: <source_url>` on its own line, followed by `Ref: <source_ref>` when non-None, followed by a blank line, before item #1 below. Omit the preamble entirely when `source_url` is None (HF-card / script / notebook paths) — no empty header.
+
 Surface:
 
 1. **Files created**, grouped by purpose: app code, config, tests, project files.
