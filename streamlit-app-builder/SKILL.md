@@ -2,12 +2,14 @@
 name: streamlit-app-builder
 description: >
   Generate a production-structured Streamlit app from an existing artifact: a
-  local Python script, a Jupyter notebook (local or URL), or a HuggingFace
-  model card URL. Triggers: build a Streamlit app for production, wrap a
-  notebook into a Streamlit app, generate a UI for a HuggingFace model, any
-  link to a `.ipynb` or to `huggingface.co/<org>/<model>`, turn a script into
-  a multipage Streamlit app, scaffold a Streamlit app intended for paying
-  customers.
+  local Python script, a Jupyter notebook (local or URL), a HuggingFace
+  model card URL, or a GitHub URL (blob `.py` or repo root). Triggers: build
+  a Streamlit app for production, wrap a notebook into a Streamlit app,
+  generate a UI for a HuggingFace model, scaffold from a GitHub repo or a
+  specific GitHub file, any link to a `.ipynb` or to
+  `huggingface.co/<org>/<model>` or to `github.com/<o>/<r>`, turn a script
+  into a multipage Streamlit app, scaffold a Streamlit app intended for
+  paying customers.
 ---
 
 # Streamlit App Builder
@@ -137,7 +139,7 @@ Branch names, tags, and 7–40-char commit SHAs all match the `[^/]+` ref class.
 1. Resolve `blob/<ref>/<path>.py` → `https://raw.githubusercontent.com/<o>/<r>/<ref>/<path>.py`.
 2. Download with `curl -L`. On non-200 response: fail with the HTTP status code and resolved URL.
 3. Feed the downloaded source into Step 2's AST walker, unchanged.
-4. Populate IR: `source_url = <original input URL>`, `source_ref = <ref parsed from URL>`.
+4. Populate IR: `source_url = <original input URL>`, `source_ref = <ref parsed from URL>`, `license = None` (blob mode makes no GitHub API call, so SPDX metadata is unavailable — downstream README / Step 8 license-flag treat `None` per the absent-value convention).
 
 **Repo-root mode:**
 
