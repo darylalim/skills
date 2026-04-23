@@ -6,4 +6,4 @@ A collection of Claude Code skills.
 |-------|-------------|
 | [`dash-app-builder`](dash-app-builder/SKILL.md) | Generate Dash analytics apps from Python scripts or Jupyter notebooks |
 | [`gradio-app-builder`](gradio-app-builder/SKILL.md) | Generate Gradio apps from Python scripts or Jupyter notebooks |
-| [`streamlit-app-builder`](streamlit-app-builder/SKILL.md) | Generate production-structured Streamlit apps from Python scripts, Jupyter notebooks, or HuggingFace model card URLs, with live HF docs verification |
+| [`streamlit-app-builder`](streamlit-app-builder/SKILL.md) | Generate production-structured Streamlit apps from Python scripts, Jupyter notebooks, HuggingFace model card URLs, or GitHub URLs (blob `.py` or repo root), with live HF docs verification |
