@@ -147,9 +147,11 @@ Produce this structure in memory, consumed by all subsequent steps:
 
 Fall through to "General Script" when ambiguous. The corresponding template is in `references/pipeline-tag-patterns.md` under the Fallback section.
 
-## Step 4: Fetch live Streamlit docs
+## Step 4: Fetch live Streamlit and HuggingFace docs
 
-Before writing code, fetch the following pages from `docs.streamlit.io` and verify APIs match the templates below. See `references/streamlit-docs-index.md` for full URLs.
+Before writing code, fetch the relevant pages from `docs.streamlit.io` and `huggingface.co/docs`, and verify APIs match the templates below. Canonical URLs live in `references/streamlit-docs-index.md` and `references/huggingface-docs-index.md`.
+
+### Streamlit docs
 
 **Always:**
 - Multipage + `st.navigation` + `st.Page`
@@ -164,7 +166,21 @@ Before writing code, fetch the following pages from `docs.streamlit.io` and veri
 - Image: `st.file_uploader`, `st.image`
 - Visualization: `st.plotly_chart`, `st.line_chart`, `st.dataframe`
 
-If any fetched page shows an API that differs from the template in this file, prefer the fetched docs. Update the template accordingly before generating the app. When docs are unreachable, proceed with the templates here and note in the final report that live verification was skipped.
+### HuggingFace docs
+
+**When to fetch the baseline set** (Hub security tokens, `huggingface-cli` login):
+- **HF-card input:** always.
+- **Code / notebook input:** when Step 2's AST walk detected an import of `huggingface_hub`, `transformers`, or `diffusers`. If none of those is imported, skip HF docs entirely.
+
+**Library-conditional fetches:** include a row from `references/huggingface-docs-index.md` when its trigger matches:
+- `library_name == "transformers"` (HF-card) or `transformers` imported (code input) → Pipelines + Auto classes.
+- Additionally, when `pipeline_tag == "automatic-speech-recognition"` (or Step 3 classified the code input as ASR) → ASR task guide.
+- Additionally, when `pipeline_tag == "text-to-speech"` (or Step 3 classified the code input as TTS) → TTS task guide.
+- `library_name == "diffusers"` (HF-card) or `diffusers` imported (code input) → Loading pipelines + Quick tour.
+
+### Rules for both sources
+
+If any fetched page shows an API that differs from the template in this file, prefer the fetched docs. Update the template accordingly before generating the app. When a page is unreachable, proceed with the templates here and note in the final report: "live verification skipped for <URL>".
 
 ## Step 5: Scaffold files
 
