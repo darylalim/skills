@@ -586,6 +586,8 @@ The generated README covers setup, env vars, license, and gated-model instructio
 
 <One-line description extracted from the source>
 
+<When `source_url` is non-None, insert: **Source:** [<source_url>](<source_url>) (`<source_ref>`). Omit the entire line otherwise.>
+
 ## Setup
 
 ```bash
