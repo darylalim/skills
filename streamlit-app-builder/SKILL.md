@@ -654,6 +654,7 @@ Surface:
 
 ## References
 
-- `references/streamlit-docs-index.md` — canonical docs URLs for live fetches
+- `references/streamlit-docs-index.md` — canonical Streamlit docs URLs for live fetches
+- `references/huggingface-docs-index.md` — canonical huggingface.co/docs URLs for live fetches
 - `references/pipeline-tag-patterns.md` — HF pipeline_tag → UI pattern catalog
 - `references/license-flags.md` — commercial-use flags for model licenses
