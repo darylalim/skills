@@ -52,20 +52,19 @@ model = Flux1Kontext(model_config=ModelConfig.dev_kontext())
 image = model.generate_image(
     seed=seed, prompt=prompt,
     num_inference_steps=num_inference_steps,
-    width=width, height=height,
     guidance=4.0,
     image_path=image_paths[0],
 )
 ```
 
-`Flux1Kontext.generate_image` takes a single `image_path` (not an `image_paths` list); the scaffold inference wrapper passes `image_paths[0]`.
+`Flux1Kontext.generate_image` takes a single `image_path` (not an `image_paths` list); the scaffold inference wrapper passes `image_paths[0]`. Output dimensions default to 1024×1024; the i2i page template does not expose width/height sliders.
 
 Defaults:
 
 | Mode | steps | width | height |
 |------|-------|-------|--------|
 | t2i  | 4     | 1024  | 1024   |
-| i2i  | 4     | 1024  | 1024   |
+| i2i  | 4     | —     | —      |
 
 ### `flux2`
 
@@ -137,17 +136,18 @@ image = model.generate_image(
     seed=seed, prompt=prompt,
     image_paths=image_paths,
     num_inference_steps=num_inference_steps,
-    width=width, height=height,
     guidance=2.5,
 )
 ```
+
+`QwenImageEdit.generate_image` accepts optional `width` / `height` kwargs (canonical example uses 624×1024); omitted here so the i2i page template's no-width/height-slider design works uniformly across families. Override at scaffold time only if the team needs explicit edit dimensions.
 
 Defaults:
 
 | Mode | steps | width | height |
 |------|-------|-------|--------|
 | t2i  | 30    | 1920  | 816    |
-| i2i  | 30    | 624   | 1024   |
+| i2i  | 30    | —     | —      |
 
 ### `fibo`
 
@@ -179,19 +179,18 @@ image = model.generate_image(
     seed=seed, prompt=prompt,
     image_path=image_paths[0],
     num_inference_steps=num_inference_steps,
-    width=width, height=height,
     guidance=3.5,
 )
 ```
 
-`FIBOEdit.generate_image` takes a single `image_path` (not an `image_paths` list); the scaffold inference wrapper passes `image_paths[0]`.
+`FIBOEdit.generate_image` takes a single `image_path` (not an `image_paths` list); the scaffold inference wrapper passes `image_paths[0]`. Width/height kwargs are accepted (canonical example uses 640×384) but omitted here for parity with the no-width/height-slider i2i page template.
 
 Defaults:
 
 | Mode | steps | width | height |
 |------|-------|-------|--------|
 | t2i  | 50    | 1200  | 540    |
-| i2i  | 30    | 640   | 384    |
+| i2i  | 30    | —     | —      |
 
 ### `z_image`
 
