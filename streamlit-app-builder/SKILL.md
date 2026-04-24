@@ -941,7 +941,9 @@ Versions are not pinned on the command line — `uv add` resolves the current la
 | Pattern                              | Add                                    |
 |--------------------------------------|----------------------------------------|
 | Text generation (non-transformers)   | `accelerate` (transformers branch)     |
-| Image / vision / diffusion           | `diffusers`, `accelerate`, `pillow`    |
+| `text-to-image` / `image-to-image`, `mflux_family` matched, with diffusers fallback (`flux`) | `"mflux;platform_machine=='arm64' and sys_platform=='darwin'"`, `"diffusers;platform_machine!='arm64' or sys_platform!='darwin'"`, `"accelerate;platform_machine!='arm64' or sys_platform!='darwin'"` |
+| `text-to-image` / `image-to-image`, `mflux_family` matched, Apple-Silicon-only (`flux2`, `qwen_image`, `fibo`, `z_image`) | `"mflux;platform_machine=='arm64' and sys_platform=='darwin'"` — **no fallback** |
+| Image / vision / diffusion (no `mflux_family` match) | `diffusers`, `accelerate`, `pillow`    |
 | Automatic speech recognition         | `"mlx-audio;platform_machine=='arm64' and sys_platform=='darwin'"`, `"transformers[audio];platform_machine!='arm64' or sys_platform!='darwin'"` |
 | Text to speech                       | `"mlx-audio;platform_machine=='arm64' and sys_platform=='darwin'"`, `"transformers[audio];platform_machine!='arm64' or sys_platform!='darwin'"` |
 | Audio to audio                       | `"mlx-audio;platform_machine=='arm64' and sys_platform=='darwin'"` — **no fallback** (Apple-Silicon-only) |
