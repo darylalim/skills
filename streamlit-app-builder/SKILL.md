@@ -45,13 +45,17 @@ When the source artifact references a model with an MLX-converted equivalent on 
 
 **MLX backend index:**
 
-| `pipeline_tag` | MLX module | PyPI | Apple-Silicon-only? | Transformers fallback |
+| `pipeline_tag` | MLX module | PyPI | Apple-Silicon-only? | Fallback |
 |---|---|---|---|---|
 | `text-generation`, `conversational` | `mlx_lm` | `mlx-lm` | no | `transformers` |
 | `image-to-text`, `image-text-to-text` | `mlx_vlm` | `mlx-vlm` | no | `transformers` |
 | `automatic-speech-recognition` | `mlx_audio.stt` | `mlx-audio` | no | `transformers[audio]` (via `pipeline("automatic-speech-recognition")`) |
 | `text-to-speech` | `mlx_audio.tts` | `mlx-audio` | no | `transformers[audio]` (SpeechT5 / Bark / Parler-TTS) |
 | `audio-to-audio` | `mlx_audio.sts` | `mlx-audio` | **yes** | — (`RuntimeError` at model load off Apple Silicon) |
+| `text-to-image` | `mflux.models.<family>` | `mflux` | varies by family | `diffusers` for `flux` family; none for `flux2`/`qwen_image`/`fibo`/`z_image` |
+| `image-to-image` | `mflux.models.<family>` | `mflux` | varies by family | `diffusers` for `flux` family; none for `flux2`/`qwen_image`/`fibo`/`z_image` |
+
+For `text-to-image` and `image-to-image`, the Apple-Silicon-only flag is **per-family**, not per pipeline-tag — see `references/mflux-families.md` Part A for the per-family policy. `inference.py` dispatches per-family at scaffold time (Step 5).
 
 Apple-Silicon-only rows install no transformers fallback; `inference.py` raises a clear `RuntimeError` at model load on non-Apple-Silicon hosts, and the generated `README.md` notes the platform requirement.
 
