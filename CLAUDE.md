@@ -62,7 +62,7 @@ GitHub URL inputs support two shapes: blob-`.py` URL and repo root (README's fir
 
 **Outputs:**
 - `streamlit_app.py` — `st.navigation` router entrypoint
-- `src/<app_name>/` — package with `config.py`, `inference.py` (MLX/transformers dispatch), `data.py`, `viz.py`, and `pages/`
+- `src/<app_name>/` — package with `config.py`, `inference.py` (MLX / transformers / diffusers dispatch), `data.py`, `viz.py`, and `pages/`
 - `tests/` — pytest unit tests plus a `streamlit.testing.v1.AppTest` smoke test
 - `.streamlit/config.toml` — Streamlit server and theme config
 - `pyproject.toml` — uv-managed, platform-conditional deps: `mlx-lm` / `mlx-vlm` / `mlx-audio` / `mflux` on Apple Silicon, `transformers` / `diffusers` elsewhere (`audio-to-audio` is Apple-Silicon-only; `mflux` families other than `flux` are Apple-Silicon-only)
