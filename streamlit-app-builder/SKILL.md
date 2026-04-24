@@ -998,8 +998,10 @@ Surface:
    Apple Silicon backend: mflux (<family>). Non-Apple-Silicon fallback: <diffusers class or "none — Apple-Silicon-only">.
    ```
 
-   When `pipeline_tag ∈ {text-to-image, image-to-image}` and `mflux_family = None`, emit instead: *"No mflux family matched — app will use diffusers on all platforms."*
-3. **Apple-Silicon-only warning (when applicable)** — if the classified pipeline is `audio-to-audio` OR `mflux_family` is an Apple-Silicon-only family (`flux2`, `qwen_image`, `fibo`, `z_image`), state: "This scaffold requires Apple Silicon at runtime. On non-Apple-Silicon hosts (including Intel Macs), `uv sync` will not install `mlx-audio` / `mflux` and the app will error at model load."
+   When the input is an HF model card with `pipeline_tag ∈ {text-to-image, image-to-image}` and `mflux_family = None`, emit instead: *"No mflux family matched — app will use diffusers on all platforms."* (Script / notebook / GitHub URL inputs skip both mflux-related lines because `pipeline_tag` is not in the IR for those input types.)
+3. **Apple-Silicon-only warning (when applicable)** — emit one of the two messages below depending on the trigger:
+   - If the classified pipeline is `audio-to-audio`: *"This scaffold requires Apple Silicon at runtime. On non-Apple-Silicon hosts (including Intel Macs), `uv sync` will not install `mlx-audio` and the app will error at model load."*
+   - If `mflux_family` is an Apple-Silicon-only family (`flux2`, `qwen_image`, `fibo`, `z_image`): *"This scaffold requires Apple Silicon at runtime. On non-Apple-Silicon hosts (including Intel Macs), `uv sync` will not install `mflux` and the app will error at model load."*
 
    **Install-size note (when `mflux_family` is non-`None`):** `uv sync` on Apple Silicon installs ~2–3 GB of model-inference dependencies (mflux pulls `torch`, `opencv-python`, `sentencepiece`, etc.); first run may take several minutes. Silent otherwise.
 4. **License + commercial-use flag** — from `references/license-flags.md`, if the model's license matches a flagged entry. Quote the flag text inline.
