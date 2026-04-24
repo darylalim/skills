@@ -69,6 +69,8 @@ Defaults:
 
 ### `flux2`
 
+Apple-Silicon-only — no diffusers fallback.
+
 Text-to-image:
 
 ```python
@@ -97,14 +99,18 @@ image = model.generate_image(
 )
 ```
 
+`Flux2KleinEdit.generate_image` derives output dimensions from the input reference image(s); no `width` / `height` kwargs are accepted.
+
 Defaults:
 
 | Mode | steps | width | height |
 |------|-------|-------|--------|
 | t2i  | 4     | 1024  | 560    |
-| i2i  | 4     | 1024  | 560    |
+| i2i  | 4     | —     | —      |
 
 ### `qwen_image`
+
+Apple-Silicon-only — no diffusers fallback.
 
 Text-to-image:
 
@@ -131,6 +137,7 @@ image = model.generate_image(
     seed=seed, prompt=prompt,
     image_paths=image_paths,
     num_inference_steps=num_inference_steps,
+    width=width, height=height,
     guidance=2.5,
 )
 ```
@@ -143,6 +150,8 @@ Defaults:
 | i2i  | 30    | 624   | 1024   |
 
 ### `fibo`
+
+Apple-Silicon-only — no diffusers fallback.
 
 Text-to-image:
 
@@ -185,6 +194,8 @@ Defaults:
 | i2i  | 30    | 640   | 384    |
 
 ### `z_image`
+
+Apple-Silicon-only — no diffusers fallback.
 
 No image-to-image variant for Z-Image — emit a text-to-image-only page.
 
