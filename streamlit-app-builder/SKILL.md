@@ -57,7 +57,7 @@ When the source artifact references a model with an MLX-converted equivalent on 
 
 For `text-to-image` and `image-to-image`, the Apple-Silicon-only flag is **per-family**, not per pipeline-tag — see `references/mflux-families.md` Part A for the per-family policy. `inference.py` dispatches per-family at scaffold time (Step 5).
 
-Apple-Silicon-only rows install no transformers fallback; `inference.py` raises a clear `RuntimeError` at model load on non-Apple-Silicon hosts, and the generated `README.md` notes the platform requirement.
+Apple-Silicon-only rows install no fallback; `inference.py` raises a clear `RuntimeError` at model load on non-Apple-Silicon hosts, and the generated `README.md` notes the platform requirement.
 
 The MLX lookup is independent of where the skill itself runs. A Linux developer scaffolding from an HF model card still produces an app with MLX support wired in — runtime dispatch activates MLX only when a user later runs the app on a Mac. (Exception: `audio-to-audio` apps run on Apple Silicon only, by design.)
 
