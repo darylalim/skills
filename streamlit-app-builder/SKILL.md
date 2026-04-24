@@ -52,8 +52,8 @@ When the source artifact references a model with an MLX-converted equivalent on 
 | `automatic-speech-recognition` | `mlx_audio.stt` | `mlx-audio` | no | `transformers[audio]` (via `pipeline("automatic-speech-recognition")`) |
 | `text-to-speech` | `mlx_audio.tts` | `mlx-audio` | no | `transformers[audio]` (SpeechT5 / Bark / Parler-TTS) |
 | `audio-to-audio` | `mlx_audio.sts` | `mlx-audio` | **yes** | — (`RuntimeError` at model load off Apple Silicon) |
-| `text-to-image` | `mflux.models.<family>` | `mflux` | varies by family | `diffusers` for `flux` family; none for `flux2`/`qwen_image`/`fibo`/`z_image` |
-| `image-to-image` | `mflux.models.<family>` | `mflux` | varies by family | `diffusers` for `flux` family; none for `flux2`/`qwen_image`/`fibo`/`z_image` |
+| `text-to-image` | `mflux.models.<family>` | `mflux` | varies by family | `diffusers` for `flux` family; none for Apple-Silicon-only families per `references/mflux-families.md` Part A |
+| `image-to-image` | `mflux.models.<family>` | `mflux` | varies by family | `diffusers` for `flux` family; none for Apple-Silicon-only families per `references/mflux-families.md` Part A |
 
 For `text-to-image` and `image-to-image`, the Apple-Silicon-only flag is **per-family**, not per pipeline-tag — see `references/mflux-families.md` Part A for the per-family policy. `inference.py` dispatches per-family at scaffold time (Step 5).
 
@@ -580,7 +580,7 @@ def edit_image(prompt, image_paths, num_inference_steps, seed) -> Image.Image:
     ).images[0]
 ```
 
-**Variant B — Apple-Silicon-only family** (`flux2`, `qwen_image`, `fibo`, `z_image`). Same shape as the existing `audio-to-audio` template — fail fast at `load_model()`:
+**Variant B — Apple-Silicon-only family** (every family flagged Apple-Silicon-only in `references/mflux-families.md` Part A). Same shape as the existing `audio-to-audio` template — fail fast at `load_model()`:
 
 ```python
 """Image inference. Apple-Silicon-only (no diffusers fallback for this family)."""
@@ -856,7 +856,7 @@ Which tests are emitted depends on the scaffold inputs:
 
 - `test_generate_image_*` — every text-to-image scaffold.
 - `test_edit_image_accepts_image_paths_list` — every image-to-image scaffold. Families with a single-`image_path` signature (`flux`, `fibo`) still pass here because the test wraps the single path in a list and the inference wrapper unpacks to `image_path=image_paths[0]`.
-- `test_load_model_raises_on_non_apple_silicon` — only when the matched family's Part A row is Apple-Silicon-only (`flux2`, `qwen_image`, `fibo`, `z_image`). Not emitted for the `flux` family or for `mflux_family = None` scaffolds.
+- `test_load_model_raises_on_non_apple_silicon` — only when the matched family's Part A row is Apple-Silicon-only (per `references/mflux-families.md` Part A). Not emitted for families with a diffusers fallback (currently only `flux`) or for `mflux_family = None` scaffolds.
 
 `tests/test_app_smoke.py` is unchanged — its `AppTest.from_file(...)` already exercises the new `render()` bodies without needing family-specific fixtures.
 
@@ -957,7 +957,7 @@ Versions are not pinned on the command line — `uv add` resolves the current la
 |--------------------------------------|----------------------------------------|
 | Text generation (non-transformers)   | `accelerate` (transformers branch)     |
 | `text-to-image` / `image-to-image`, `mflux_family` matched, with diffusers fallback (`flux`) | `"mflux;platform_machine=='arm64' and sys_platform=='darwin'"`, `"diffusers;platform_machine!='arm64' or sys_platform!='darwin'"`, `"accelerate;platform_machine!='arm64' or sys_platform!='darwin'"` |
-| `text-to-image` / `image-to-image`, `mflux_family` matched, Apple-Silicon-only (`flux2`, `qwen_image`, `fibo`, `z_image`) | `"mflux;platform_machine=='arm64' and sys_platform=='darwin'"` — **no fallback** |
+| `text-to-image` / `image-to-image`, `mflux_family` matched, Apple-Silicon-only (per `references/mflux-families.md` Part A) | `"mflux;platform_machine=='arm64' and sys_platform=='darwin'"` — **no fallback** |
 | Image / vision / diffusion (no `mflux_family` match) | `diffusers`, `accelerate`, `pillow`    |
 | Automatic speech recognition         | `"mlx-audio;platform_machine=='arm64' and sys_platform=='darwin'"`, `"transformers[audio];platform_machine!='arm64' or sys_platform!='darwin'"` |
 | Text to speech                       | `"mlx-audio;platform_machine=='arm64' and sys_platform=='darwin'"`, `"transformers[audio];platform_machine!='arm64' or sys_platform!='darwin'"` |
@@ -1016,7 +1016,7 @@ Surface:
    When the input is an HF model card with `pipeline_tag ∈ {text-to-image, image-to-image}` and `mflux_family = None`, emit instead: *"No mflux family matched — app will use diffusers on all platforms."* (Script / notebook / GitHub URL inputs skip both mflux-related lines because `pipeline_tag` is not in the IR for those input types.)
 3. **Apple-Silicon-only warning (when applicable)** — emit one of the two messages below depending on the trigger:
    - If the classified pipeline is `audio-to-audio`: *"This scaffold requires Apple Silicon at runtime. On non-Apple-Silicon hosts (including Intel Macs), `uv sync` will not install `mlx-audio` and the app will error at model load."*
-   - If `mflux_family` is an Apple-Silicon-only family (`flux2`, `qwen_image`, `fibo`, `z_image`): *"This scaffold requires Apple Silicon at runtime. On non-Apple-Silicon hosts (including Intel Macs), `uv sync` will not install `mflux` and the app will error at model load."*
+   - If `mflux_family` is an Apple-Silicon-only family (per `references/mflux-families.md` Part A): *"This scaffold requires Apple Silicon at runtime. On non-Apple-Silicon hosts (including Intel Macs), `uv sync` will not install `mflux` and the app will error at model load."*
 
    **Install-size note (when `mflux_family` is non-`None`):** `uv sync` on Apple Silicon installs ~2–3 GB of model-inference dependencies (mflux pulls `torch`, `opencv-python`, `sentencepiece`, etc.); first run may take several minutes. Silent otherwise.
 4. **License + commercial-use flag** — from `references/license-flags.md`, if the model's license matches a flagged entry. Quote the flag text inline.
