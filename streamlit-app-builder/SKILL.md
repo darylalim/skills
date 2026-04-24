@@ -234,6 +234,8 @@ Fetched for every run — Streamlit is the output framework regardless of input 
 - Additionally, when `pipeline_tag == "text-to-speech"` → TTS task guide.
 - `library_name == "diffusers"` (HF-card) or `diffusers` imported (code input) → Loading pipelines + Quick tour.
 
+**mflux family fetch (conditional):** when `mflux_family` in the IR is non-`None`, fetch `https://raw.githubusercontent.com/filipstrand/mflux/main/src/mflux/models/<mflux_family>/README.md` to verify the canonical Python snippet in `references/mflux-families.md` Part B still matches upstream. If the fetched snippet disagrees (class renamed, `ModelConfig` factory renamed, `generate_image` kwargs changed), prefer the fetched docs — update the inlined imports and class names in the generated `inference.py` before proceeding to Step 7's quality gate. URL is off-domain (GitHub), so the index-in-`huggingface-docs-index.md` policy does not apply — keep this rule inline here.
+
 ### Rules for both sources
 
 If any fetched page shows an API that differs from the template in this file, prefer the fetched docs. Update the template accordingly before generating the app. When a page is unreachable, proceed with the templates here and note in the final report: "live verification skipped for <URL>".
