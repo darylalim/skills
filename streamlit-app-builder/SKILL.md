@@ -172,15 +172,18 @@ Produce this structure in memory, consumed by all subsequent steps:
     "is_gated": bool,
     "license": "<SPDX or license_name>",
     "mlx_equivalent": "<mlx-community/...>" or None,
+    "mflux_family": "<family key from references/mflux-families.md Part A>" or None,   # populated only by HF-card inputs with pipeline_tag in {text-to-image, image-to-image}; None otherwise
     "siblings": ["<org>/<model>", ...],   # from Step 1's org-freshness check; [] when the org is not a priority org or no same-task siblings were found
     "source_url": "<original input URL>" or None,   # populated by GitHub URL branch only
     "source_ref": "<resolved git ref>" or None,     # populated by GitHub URL branch only
 }
 ```
 
-**Absent-value convention:** scalar fields (`inference_fn`, `mlx_equivalent`, `source_url`, `source_ref`) use `None` when absent; list fields (`data_fns`, `viz_fns`, `deps`, `siblings`) use `[]`. New fields follow the same pattern. Existing `.py` / `.ipynb` / HF-card branches leave `source_url` / `source_ref` as `None` — only the GitHub URL branch populates them.
+**Absent-value convention:** scalar fields (`inference_fn`, `mlx_equivalent`, `mflux_family`, `source_url`, `source_ref`) use `None` when absent; list fields (`data_fns`, `viz_fns`, `deps`, `siblings`) use `[]`. New fields follow the same pattern. Existing `.py` / `.ipynb` / HF-card branches leave `source_url` / `source_ref` as `None` — only the GitHub URL branch populates them.
 
 **Code input (script or notebook):** AST-parse the code (`ast.parse` + walk `FunctionDef`) to extract top-level function signatures with type annotations. Classify each function as inference (calls `.predict`, `.generate`, `.forward`, `.__call__` on a model), data (reads/writes files, manipulates DataFrames), or viz (returns a matplotlib/plotly figure). Collect imports for dependency inference. **MLX resolution is not performed for code inputs** — `mlx_equivalent` stays `None` and `siblings` stays `[]` even when the snippet contains `from_pretrained("<org>/<model>")` string literals. MLX lookup fires only for HF-card URL inputs, per Step 1.
+
+**`mflux_family` population:** only HF model card inputs with `pipeline_tag ∈ {text-to-image, image-to-image}` can produce a non-`None` value; every other input type (`.py`, `.ipynb`, GitHub URL) and every other `pipeline_tag` leaves `mflux_family = None`. As with `mlx_equivalent`, the skill does not infer `mflux_family` from string literals in a code/notebook input.
 
 **HF model card input:** Map fields directly from the API JSON. Derive `deps` from `library_name` + `tags` (e.g., `transformers` → `transformers` + `torch`; `diffusers` → `diffusers` + `transformers` + `torch`; `sentence-transformers` → `sentence-transformers` + `torch`). Extract the first library-idiomatic snippet from the README as the seed for `inference.py`'s transformers branch.
 
