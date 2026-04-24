@@ -20,12 +20,24 @@ If no row matches, `mflux_family = None`.
 
 ## Part B — Per-family invocation blocks
 
-Each block provides the canonical mflux snippet for text-to-image and (where applicable) image-to-image, plus default generation params. Scaffold-time consumers read two things from each block:
+Sections (in order): [`flux`](#flux), [`flux2`](#flux2), [`qwen_image`](#qwen_image), [`fibo`](#fibo), [`z_image`](#z_image) (text-to-image only).
+
+Each block provides the canonical mflux snippet for text-to-image and (where applicable) image-to-image, plus default generation params. The per-family layout is uniform:
+
+1. Policy callout (diffusers fallback / Apple-Silicon-only).
+2. Text-to-image code block.
+3. Image-to-image code block (or a one-line note when the family has no i2i variant).
+4. Per-family kwargs notes (single `image_path` vs. list, omitted width/height, etc.).
+5. Defaults table feeding the page template's slider `value=...` arguments.
+
+Scaffold-time consumers read two things from each block:
 
 1. Import + instantiation + generate lines — inlined verbatim into `inference.py` at scaffold time.
 2. Default generation params — substituted into the page template's slider `value=...` arguments.
 
 ### `flux`
+
+Diffusers fallback available off Apple Silicon (`FluxPipeline` for t2i, `FluxImg2ImgPipeline` for i2i).
 
 Text-to-image:
 
