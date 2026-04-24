@@ -12,7 +12,7 @@ First-row-wins matching of `<org>/<model>` against each regex. On match, the `Fa
 |-------------|--------------------------------------------------------------------|--------------------|-----------------------------------------------------------------------------------|
 | `flux`      | `^black-forest-labs/FLUX\.1-(schnell\|dev\|Kontext-dev)$`          | no                 | `diffusers.FluxPipeline` (t2i) / `diffusers.FluxImg2ImgPipeline` (i2i)            |
 | `flux2`     | `^black-forest-labs/FLUX\.2-.*$`                                   | yes                | —                                                                                 |
-| `qwen_image`| `^Qwen/Qwen-Image$\|^Qwen/Qwen-Image-Edit-\d+$`                    | yes                | —                                                                                 |
+| `qwen_image`| `^Qwen/Qwen-Image(-Edit(-\d+)?)?$`                                 | yes                | —                                                                                 |
 | `fibo`      | `^briaai/(FIBO\|FIBO-lite\|Fibo-Edit\|Fibo-Edit-RMBG)$`            | yes                | —                                                                                 |
 | `z_image`   | `^Tongyi-MAI/Z-Image$\|^filipstrand/Z-Image-Turbo-mflux-4bit$`     | yes                | —                                                                                 |
 

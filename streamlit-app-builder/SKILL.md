@@ -513,7 +513,7 @@ def generate_image(prompt, width, height, num_inference_steps, seed) -> Image.Im
     return model(
         prompt=prompt, width=width, height=height,
         num_inference_steps=num_inference_steps,
-        generator=torch.Generator(device=model.device).manual_seed(seed),
+        generator=torch.Generator(device="cpu").manual_seed(seed),
     ).images[0]
 ```
 
@@ -576,7 +576,7 @@ def edit_image(prompt, image_paths, num_inference_steps, seed) -> Image.Image:
     return model(
         prompt=prompt, image=reference,
         num_inference_steps=num_inference_steps,
-        generator=torch.Generator(device=model.device).manual_seed(seed),
+        generator=torch.Generator(device="cpu").manual_seed(seed),
     ).images[0]
 ```
 
@@ -653,15 +653,30 @@ def load_model() -> Any:
 
 def edit_image(prompt, image_paths, num_inference_steps, seed) -> Image.Image:
     _, model = load_model()
-    # <match this call's kwargs to the Part B snippet for the matched family:
-    #   flux2:      image_paths=image_paths (list), no width/height
-    #   qwen_image: image_paths=image_paths (list), width=width, height=height, guidance=2.5
-    #   fibo:       image_path=image_paths[0] (single), width=width, height=height, guidance=3.5>
-    return model.generate_image(
-        seed=seed, prompt=prompt,
-        image_paths=image_paths,
-        num_inference_steps=num_inference_steps,
-    ).image
+    # REPLACE the body below with the matched family's call (call shapes differ — DO NOT inline verbatim):
+    #
+    #   flux2:       return model.generate_image(
+    #                    seed=seed, prompt=prompt,
+    #                    image_paths=image_paths,
+    #                    num_inference_steps=num_inference_steps,
+    #                ).image
+    #
+    #   qwen_image:  return model.generate_image(
+    #                    seed=seed, prompt=prompt,
+    #                    image_paths=image_paths,
+    #                    num_inference_steps=num_inference_steps,
+    #                    guidance=2.5,
+    #                ).image
+    #
+    #   fibo:        return model.generate_image(
+    #                    seed=seed, prompt=prompt,
+    #                    image_path=image_paths[0],   # NOTE singular — fibo takes a single path, not a list
+    #                    num_inference_steps=num_inference_steps,
+    #                    guidance=3.5,
+    #                ).image
+    raise NotImplementedError(
+        "Replace this body with the per-family edit_image call from the comment above."
+    )
 ```
 
 **Fallback-only path (`mflux_family = None`):** emit a diffusers-only template — no mflux import, no `IS_APPLE_SILICON` check, no platform dispatch. The scaffold produces a working app that uses `diffusers` on all platforms. Apply standard `_require("MODEL_ID")` / optional `HF_TOKEN` rules as today.
