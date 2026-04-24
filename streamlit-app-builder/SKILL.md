@@ -442,14 +442,119 @@ def generate_response(prompt: str, max_new_tokens: int | None = None) -> str:
 
 For non-text-generation pipelines, each variant still dispatches via `config.IS_APPLE_SILICON` and exposes a function named per the page template (`transcribe`, `synthesize`, `transform_audio`, `caption`, `classify`, etc.). Backend call shapes:
 
-| Pipeline | MLX branch | Transformers branch |
+| Pipeline | MLX branch | Fallback branch |
 |---|---|---|
 | `image-to-text`, `image-text-to-text` | `from mlx_vlm import load, generate` → `generate(model, processor, formatted_prompt, image)` | `pipeline("image-to-text", model=config.MODEL_ID)` |
 | `automatic-speech-recognition` | `from mlx_audio.stt.utils import load` → `load(id).generate(audio).text` | `pipeline("automatic-speech-recognition", model=config.MODEL_ID)` |
 | `text-to-speech` | `from mlx_audio.tts.utils import load_model`; iterate `load_model(id).generate(text=..., voice=...)` and concatenate each result's `.audio` | `pipeline("text-to-speech", model=config.MODEL_ID)` |
 | `audio-to-audio` | `mlx_audio.sts.<ModelClass>.from_pretrained(id)` + model-specific method (e.g. `.enhance(audio)`, `.separate_long(...)`). **Apple-Silicon-only.** | — (`RuntimeError` on non-Apple-Silicon hosts) |
+| `text-to-image` (mflux family matched) | Inline the matched family's Part B text-to-image snippet from `references/mflux-families.md` verbatim. Expose as `generate_image(prompt, width, height, num_inference_steps, seed) -> PIL.Image.Image`. | `diffusers.FluxPipeline.from_pretrained(config.MODEL_ID)` for `flux` family on non-Apple-Silicon; **no fallback** for Apple-Silicon-only families (`RuntimeError` at `load_model()`). |
+| `image-to-image` (mflux family matched) | Inline the matched family's Part B image-to-image snippet (families with an edit class only — `z_image` has none). Expose as `edit_image(prompt, image_paths: list[str], num_inference_steps, seed) -> PIL.Image.Image`. | `diffusers.FluxImg2ImgPipeline` for `flux` family on non-Apple-Silicon; **no fallback** for Apple-Silicon-only families. |
 
 For `audio-to-audio`, the exact `mlx_audio.sts` class and method depend on the model (SAM-Audio → `separate_long`, MossFormer2 → `enhance`, DeepFilterNet → `enhance`). Step 2 maps the HF card's tags/name to a known `mlx_audio.sts` class; if no mapping exists, the skill reports "no supported STS backend" and emits a General Script page with a manual-wiring TODO instead of scaffolding broken inference code.
+
+#### `text-to-image` / `image-to-image` templates (mflux)
+
+Two template variants for the mflux pipelines, selected by the matched family's `Apple-Silicon-only?` flag in `references/mflux-families.md` Part A.
+
+**Variant A — family with diffusers fallback** (currently: `flux` only). Parallel to the `mlx-lm` / transformers template above:
+
+```python
+"""Image inference. Dispatches mflux <-> diffusers by platform."""
+from functools import lru_cache
+from typing import Any
+
+from PIL import Image
+
+from <app_name> import config
+
+
+@lru_cache(maxsize=1)
+def load_model() -> Any:
+    if config.IS_APPLE_SILICON:
+        return _load_mflux()
+    return _load_diffusers()
+
+
+def _load_mflux():
+    # <inlined verbatim from mflux-families.md Part B — imports + instantiation>
+    from mflux.models.common.config import ModelConfig
+    from mflux.models.flux.variants.txt2img.flux import Flux1
+
+    model = Flux1(model_config=ModelConfig.schnell())
+    return ("mflux", model)
+
+
+def _load_diffusers():
+    import torch
+    from diffusers import FluxPipeline  # or FluxImg2ImgPipeline for image-to-image
+
+    pipe = FluxPipeline.from_pretrained(
+        config.MODEL_ID, revision=config.MODEL_REVISION,
+        torch_dtype=torch.bfloat16, token=config.HF_TOKEN,
+    )
+    return ("diffusers", pipe)
+
+
+def generate_image(prompt, width, height, num_inference_steps, seed) -> Image.Image:
+    backend, model = load_model()
+    if backend == "mflux":
+        return model.generate_image(
+            seed=seed, prompt=prompt, width=width, height=height,
+            num_inference_steps=num_inference_steps,
+        )
+    import torch
+    return model(
+        prompt=prompt, width=width, height=height,
+        num_inference_steps=num_inference_steps,
+        generator=torch.Generator().manual_seed(seed),
+    ).images[0]
+```
+
+For `image-to-image`, expose `edit_image(prompt, image_paths, num_inference_steps, seed)` instead. The diffusers branch uses `FluxImg2ImgPipeline` and loads `PIL.Image.open(image_paths[0])` as the conditioning image. Width and height are derived from the reference image on both branches (consistent with mflux's `Flux1Kontext.generate_image`).
+
+**Variant B — Apple-Silicon-only family** (`flux2`, `qwen_image`, `fibo`, `z_image`). Same shape as the existing `audio-to-audio` template — fail fast at `load_model()`:
+
+```python
+"""Image inference. Apple-Silicon-only (no diffusers fallback for this family)."""
+from functools import lru_cache
+from typing import Any
+
+from PIL import Image
+
+from <app_name> import config
+
+
+@lru_cache(maxsize=1)
+def load_model() -> Any:
+    if not config.IS_APPLE_SILICON:
+        raise RuntimeError(
+            "This app requires Apple Silicon. The <family> family has no "
+            "diffusers fallback. Run on a Mac with Apple Silicon, or "
+            "re-scaffold from an HF model card whose family has a diffusers "
+            "fallback (e.g., black-forest-labs/FLUX.1-schnell)."
+        )
+    # <inlined verbatim from mflux-families.md Part B>
+    from mflux.models.common.config import ModelConfig
+    from mflux.models.flux2.variants import Flux2Klein
+
+    model = Flux2Klein(model_config=ModelConfig.flux2_klein_9b())
+    return ("mflux", model)
+
+
+def generate_image(prompt, width, height, num_inference_steps, seed) -> Image.Image:
+    _, model = load_model()
+    return model.generate_image(
+        seed=seed, prompt=prompt, width=width, height=height,
+        num_inference_steps=num_inference_steps,
+    )
+```
+
+For `image-to-image` on Apple-Silicon-only families, expose `edit_image(prompt, image_paths, num_inference_steps, seed)` and pass `image_paths=image_paths` to `model.generate_image(...)` (for `qwen_image` and `flux2`, which accept a list) or `image_path=image_paths[0]` (for `fibo` — see the note in `mflux-families.md`). `z_image` has no image-to-image variant.
+
+**Fallback-only path (`mflux_family = None`):** emit a diffusers-only template — no mflux import, no `IS_APPLE_SILICON` check, no platform dispatch. The scaffold produces a working app that uses `diffusers` on all platforms. Apply standard `_require("MODEL_ID")` / optional `HF_TOKEN` rules as today.
+
+Substitute `<family>`, the mflux class, and the `ModelConfig` constructor from the matched `references/mflux-families.md` Part B block at scaffold time. Do not leave `<...>` placeholders in the generated app.
 
 ### `src/<app_name>/data.py` and `viz.py`
 
