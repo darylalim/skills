@@ -487,31 +487,98 @@ def _load_mflux():
 
 def _load_diffusers():
     import torch
-    from diffusers import FluxPipeline  # or FluxImg2ImgPipeline for image-to-image
+    from diffusers import FluxPipeline  # swap to FluxImg2ImgPipeline for the i2i template
 
+    device = (
+        config.DEVICE
+        if config.DEVICE != "auto"
+        else ("cuda" if torch.cuda.is_available() else "cpu")
+    )
     pipe = FluxPipeline.from_pretrained(
         config.MODEL_ID, revision=config.MODEL_REVISION,
         torch_dtype=torch.bfloat16, token=config.HF_TOKEN,
-    )
+    ).to(device)
     return ("diffusers", pipe)
 
 
 def generate_image(prompt, width, height, num_inference_steps, seed) -> Image.Image:
     backend, model = load_model()
     if backend == "mflux":
+        # <match this call's kwargs to the Part B snippet — e.g., add guidance=4.0 for flux, guidance=3.5 for fibo i2i>
         return model.generate_image(
             seed=seed, prompt=prompt, width=width, height=height,
             num_inference_steps=num_inference_steps,
-        )
+        ).image
     import torch
     return model(
         prompt=prompt, width=width, height=height,
         num_inference_steps=num_inference_steps,
-        generator=torch.Generator().manual_seed(seed),
+        generator=torch.Generator(device=model.device).manual_seed(seed),
     ).images[0]
 ```
 
-For `image-to-image`, expose `edit_image(prompt, image_paths, num_inference_steps, seed)` instead. The diffusers branch uses `FluxImg2ImgPipeline` and loads `PIL.Image.open(image_paths[0])` as the conditioning image. Width and height are derived from the reference image on both branches (consistent with mflux's `Flux1Kontext.generate_image`).
+**Variant A `image-to-image` template (`flux` family only):**
+
+```python
+"""Image-to-image inference. Dispatches mflux <-> diffusers by platform."""
+from functools import lru_cache
+from typing import Any
+
+from PIL import Image
+
+from <app_name> import config
+
+
+# mflux's Flux1Kontext.generate_image returns a GeneratedImage wrapper; call .image to get the PIL.Image.
+@lru_cache(maxsize=1)
+def load_model() -> Any:
+    if config.IS_APPLE_SILICON:
+        return _load_mflux()
+    return _load_diffusers()
+
+
+def _load_mflux():
+    # <inlined verbatim from mflux-families.md Part B, flux i2i subsection>
+    from mflux.models.common.config import ModelConfig
+    from mflux.models.flux.variants.kontext.flux_kontext import Flux1Kontext
+
+    model = Flux1Kontext(model_config=ModelConfig.dev_kontext())
+    return ("mflux", model)
+
+
+def _load_diffusers():
+    import torch
+    from diffusers import FluxImg2ImgPipeline
+
+    device = (
+        config.DEVICE
+        if config.DEVICE != "auto"
+        else ("cuda" if torch.cuda.is_available() else "cpu")
+    )
+    pipe = FluxImg2ImgPipeline.from_pretrained(
+        config.MODEL_ID, revision=config.MODEL_REVISION,
+        torch_dtype=torch.bfloat16, token=config.HF_TOKEN,
+    ).to(device)
+    return ("diffusers", pipe)
+
+
+def edit_image(prompt, image_paths, num_inference_steps, seed) -> Image.Image:
+    backend, model = load_model()
+    if backend == "mflux":
+        # <match this call's kwargs to the Part B snippet — Flux1Kontext takes image_path (singular), guidance=4.0>
+        return model.generate_image(
+            seed=seed, prompt=prompt,
+            num_inference_steps=num_inference_steps,
+            image_path=image_paths[0],
+        ).image
+    import torch
+    reference = Image.open(image_paths[0])
+    return model(
+        prompt=prompt, image=reference,
+        num_inference_steps=num_inference_steps,
+        generator=torch.Generator(device=model.device).manual_seed(seed),
+    ).images[0]
+```
 
 **Variant B — Apple-Silicon-only family** (`flux2`, `qwen_image`, `fibo`, `z_image`). Same shape as the existing `audio-to-audio` template — fail fast at `load_model()`:
 
@@ -525,6 +592,7 @@ from PIL import Image
 from <app_name> import config
 
 
+# mflux's generate_image returns a GeneratedImage wrapper; call .image to get the PIL.Image.
 @lru_cache(maxsize=1)
 def load_model() -> Any:
     if not config.IS_APPLE_SILICON:
@@ -544,13 +612,57 @@ def load_model() -> Any:
 
 def generate_image(prompt, width, height, num_inference_steps, seed) -> Image.Image:
     _, model = load_model()
+    # <match this call's kwargs to the Part B snippet — e.g., add guidance=4.0 for flux, guidance=3.5 for fibo i2i>
     return model.generate_image(
         seed=seed, prompt=prompt, width=width, height=height,
         num_inference_steps=num_inference_steps,
-    )
+    ).image
 ```
 
-For `image-to-image` on Apple-Silicon-only families, expose `edit_image(prompt, image_paths, num_inference_steps, seed)` and pass `image_paths=image_paths` to `model.generate_image(...)` (for `qwen_image` and `flux2`, which accept a list) or `image_path=image_paths[0]` (for `fibo` — see the note in `mflux-families.md`). `z_image` has no image-to-image variant.
+**Variant B `image-to-image` template (Apple-Silicon-only families with an edit variant):**
+
+Emit this variant only when the matched family has an image-to-image class in `mflux-families.md` Part B — `flux2`, `qwen_image`, `fibo`. `z_image` has no i2i variant; omit the image-to-image page entirely for `z_image` inputs with `pipeline_tag=image-to-image` (the skill rejects this at scaffold time with a clear error instead of generating a broken edit page).
+
+```python
+"""Image-to-image inference. Apple-Silicon-only (no diffusers fallback for this family)."""
+from functools import lru_cache
+from typing import Any
+
+from PIL import Image
+
+from <app_name> import config
+
+
+# mflux's generate_image returns a GeneratedImage wrapper; call .image to get the PIL.Image.
+@lru_cache(maxsize=1)
+def load_model() -> Any:
+    if not config.IS_APPLE_SILICON:
+        raise RuntimeError(
+            "This app requires Apple Silicon. The <family> family has no "
+            "diffusers fallback. Run on a Mac with Apple Silicon, or "
+            "pick a model family with a generic diffusers backend "
+            "(e.g., any black-forest-labs/FLUX.1-* model)."
+        )
+    # <inlined verbatim from mflux-families.md Part B, family's i2i subsection>
+    from mflux.models.common.config import ModelConfig
+    from mflux.models.flux2.variants import Flux2KleinEdit
+
+    model = Flux2KleinEdit(model_config=ModelConfig.flux2_klein_9b())
+    return ("mflux", model)
+
+
+def edit_image(prompt, image_paths, num_inference_steps, seed) -> Image.Image:
+    _, model = load_model()
+    # <match this call's kwargs to the Part B snippet for the matched family:
+    #   flux2:      image_paths=image_paths (list), no width/height
+    #   qwen_image: image_paths=image_paths (list), width=width, height=height, guidance=2.5
+    #   fibo:       image_path=image_paths[0] (single), width=width, height=height, guidance=3.5>
+    return model.generate_image(
+        seed=seed, prompt=prompt,
+        image_paths=image_paths,
+        num_inference_steps=num_inference_steps,
+    ).image
+```
 
 **Fallback-only path (`mflux_family = None`):** emit a diffusers-only template — no mflux import, no `IS_APPLE_SILICON` check, no platform dispatch. The scaffold produces a working app that uses `diffusers` on all platforms. Apply standard `_require("MODEL_ID")` / optional `HF_TOKEN` rules as today.
 
