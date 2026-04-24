@@ -193,19 +193,83 @@ if img and st.button("Caption"):
     st.write(caption(img))
 ```
 
-## Image to image / text to image
+## Text to image
 
-`pipeline_tag`: `image-to-image`, `text-to-image`
+`pipeline_tag`: `text-to-image`
+
+Scaffold-time substitution: the `value=` arguments on the width/height/steps sliders below are replaced with the defaults from the matched family's `references/mflux-families.md` Part B block (e.g., FLUX.2 Klein: `steps=4, width=1024, height=560`). When `mflux_family` is `None` (no Part A match), use generic defaults `(width=1024, height=1024, steps=20, seed=42)`.
 
 ```python
+"""Text-to-image page."""
 import streamlit as st
-from <app_name>.inference import generate_image
 
-st.title("Generate Image")
-prompt = st.text_area("Prompt", height=100)
-if st.button("Generate") and prompt:
-    img = generate_image(prompt)
-    st.image(img)
+from <app_name> import inference
+
+
+def render() -> None:
+    st.title("Text-to-Image")
+    prompt = st.text_area("Prompt", height=100)
+    col1, col2 = st.columns(2)
+    with col1:
+        width = st.slider("Width", 256, 2048, <default_width>, 64)
+        steps = st.slider("Steps", 1, 100, <default_steps>)
+    with col2:
+        height = st.slider("Height", 256, 2048, <default_height>, 64)
+        seed = st.number_input("Seed", value=42, step=1)
+    if st.button("Generate", type="primary", disabled=not prompt.strip()):
+        with st.spinner("Generating..."):
+            image = inference.generate_image(
+                prompt=prompt, width=width, height=height,
+                num_inference_steps=steps, seed=int(seed),
+            )
+        st.image(image)
+```
+
+## Image to image
+
+`pipeline_tag`: `image-to-image`
+
+Scaffold-time substitution: the `value=` argument on the steps slider is replaced with the matched family's `i2i` default from `references/mflux-families.md` Part B (e.g., Qwen-Image-Edit: `steps=30`). Width and height are not exposed as sliders — mflux edit variants either derive output dimensions from the reference image (Flux2KleinEdit, FIBOEdit) or accept width/height in `inference.edit_image`'s family-specific path (Qwen-Image-Edit, Flux1Kontext). The scaffold consumer decides per family whether to pass `width` / `height` into the inference call.
+
+```python
+"""Image-to-image page."""
+import tempfile
+from pathlib import Path
+
+import streamlit as st
+
+from <app_name> import inference
+
+
+def render() -> None:
+    st.title("Image-to-Image")
+    uploaded = st.file_uploader(
+        "Reference image(s)",
+        type=["jpg", "jpeg", "png", "webp"],
+        accept_multiple_files=True,
+    )
+    prompt = st.text_area("Prompt", height=100)
+    col1, col2 = st.columns(2)
+    with col1:
+        steps = st.slider("Steps", 1, 100, <default_steps>)
+    with col2:
+        seed = st.number_input("Seed", value=42, step=1)
+    if st.button("Generate", type="primary",
+                 disabled=not (prompt.strip() and uploaded)):
+        with tempfile.TemporaryDirectory() as td:
+            image_paths = []
+            for up in uploaded:
+                p = Path(td) / up.name
+                p.write_bytes(up.read())
+                image_paths.append(str(p))
+            with st.spinner("Generating..."):
+                image = inference.edit_image(
+                    prompt=prompt,
+                    image_paths=image_paths,
+                    num_inference_steps=steps,
+                    seed=int(seed),
+                )
+        st.image(image)
 ```
 
 ## Fallback: General Script
