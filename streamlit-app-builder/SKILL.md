@@ -716,6 +716,23 @@ def mock_model(monkeypatch):
     from <app_name> import inference
     monkeypatch.setattr(inference, "load_model", lambda: ("stub", _StubModel(), None))
     return _StubModel()
+
+
+class _StubMfluxModel:
+    """Minimal interface used by mflux-backed inference.py templates."""
+    def generate_image(self, *args, **kwargs):
+        from PIL import Image
+
+        class _StubGenerated:
+            image = Image.new("RGB", (64, 64))
+        return _StubGenerated()
+
+
+@pytest.fixture
+def mock_mflux_model(monkeypatch):
+    from <app_name> import inference
+    monkeypatch.setattr(inference, "load_model", lambda: ("mflux", _StubMfluxModel()))
+    return _StubMfluxModel()
 ```
 
 ### `tests/test_config.py`
@@ -769,6 +786,64 @@ def test_generate_response_uses_loaded_model(mock_model):
     out = inference.generate_response("hello", max_new_tokens=5)
     assert isinstance(out, str)
 ```
+
+**For `text-to-image` / `image-to-image` pipelines** (mflux or diffusers-fallback path), emit the following tests instead of the text-generation example above:
+
+```python
+"""Tests for src/<app_name>/inference.py — mflux image pipelines."""
+from PIL import Image
+
+import pytest
+
+from <app_name> import inference
+
+
+# text-to-image — emit for every text-to-image scaffold
+def test_generate_image_returns_pil_image(mock_mflux_model):
+    out = inference.generate_image(
+        prompt="a cat", width=64, height=64,
+        num_inference_steps=1, seed=42,
+    )
+    assert isinstance(out, Image.Image)
+
+
+def test_generate_image_signature_accepts_kwargs(mock_mflux_model):
+    # Sanity check: page templates call generate_image with kwargs.
+    out = inference.generate_image(
+        prompt="x", width=64, height=64,
+        num_inference_steps=1, seed=0,
+    )
+    assert out is not None
+
+
+# image-to-image — emit only for image-to-image scaffolds
+def test_edit_image_accepts_image_paths_list(mock_mflux_model, tmp_path):
+    ref = tmp_path / "ref.png"
+    Image.new("RGB", (64, 64)).save(ref)
+    out = inference.edit_image(
+        prompt="x", image_paths=[str(ref)],
+        num_inference_steps=1, seed=0,
+    )
+    assert isinstance(out, Image.Image)
+
+
+# Apple-Silicon-only guard — emit only for Variant B templates
+def test_load_model_raises_on_non_apple_silicon(monkeypatch):
+    from <app_name> import config
+    monkeypatch.setattr(config, "IS_APPLE_SILICON", False)
+    # Clear the lru_cache so the guard re-runs.
+    inference.load_model.cache_clear()
+    with pytest.raises(RuntimeError, match="Apple Silicon"):
+        inference.load_model()
+```
+
+Which tests are emitted depends on the scaffold inputs:
+
+- `test_generate_image_*` — every text-to-image scaffold.
+- `test_edit_image_accepts_image_paths_list` — every image-to-image scaffold. Families with a single-`image_path` signature (`flux`, `fibo`) still pass here because the test wraps the single path in a list and the inference wrapper unpacks to `image_path=image_paths[0]`.
+- `test_load_model_raises_on_non_apple_silicon` — only when the matched family's Part A row is Apple-Silicon-only (`flux2`, `qwen_image`, `fibo`, `z_image`). Not emitted for the `flux` family or for `mflux_family = None` scaffolds.
+
+`tests/test_app_smoke.py` is unchanged — its `AppTest.from_file(...)` already exercises the new `render()` bodies without needing family-specific fixtures.
 
 ### `tests/test_app_smoke.py`
 
