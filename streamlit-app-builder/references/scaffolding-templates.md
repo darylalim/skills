@@ -391,9 +391,49 @@ def edit_image(prompt, image_paths, num_inference_steps, seed) -> Image.Image:
 
 ## Variant: diffusers-only fallback `inference.py`
 
-Used for `pipeline_tag ∈ {text-to-image, image-to-image}` when `mflux_family = None`.
+Used for `pipeline_tag ∈ {text-to-image, image-to-image}` when `mflux_family = None` (no Part A regex matched).
 
-(body added in Task 13)
+**Files produced:** `src/<app_name>/inference.py`
+
+**Body (text-to-image):**
+
+```python
+"""Image inference. diffusers on all platforms (no mflux family matched)."""
+from functools import lru_cache
+from typing import Any
+
+from <app_name> import config
+from PIL import Image
+
+
+@lru_cache(maxsize=1)
+def load_model() -> Any:
+    import torch
+    from diffusers import DiffusionPipeline
+
+    device = (
+        config.DEVICE
+        if config.DEVICE != "auto"
+        else ("cuda" if torch.cuda.is_available() else "cpu")
+    )
+    pipe = DiffusionPipeline.from_pretrained(
+        config.MODEL_ID, revision=config.MODEL_REVISION,
+        torch_dtype=torch.bfloat16, token=config.HF_TOKEN,
+    ).to(device)
+    return ("diffusers", pipe)
+
+
+def generate_image(prompt, width, height, num_inference_steps, seed) -> Image.Image:
+    _, pipe = load_model()
+    import torch
+    return pipe(
+        prompt=prompt, width=width, height=height,
+        num_inference_steps=num_inference_steps,
+        generator=torch.Generator(device="cpu").manual_seed(seed),
+    ).images[0]
+```
+
+For `image-to-image`, swap `DiffusionPipeline` for `AutoPipelineForImage2Image`, expose `edit_image(prompt, image_paths, num_inference_steps, seed)`, and load the reference via `Image.open(image_paths[0])`. Same skeleton otherwise.
 
 ## Test fixtures: `tests/conftest.py`
 
