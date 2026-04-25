@@ -83,7 +83,9 @@ def generate_response_stream(prompt: str, max_new_tokens: int | None = None) -> 
 
     from transformers import TextIteratorStreamer
     inputs = tokenizer(prompt, return_tensors="pt")
-    streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
+    streamer = TextIteratorStreamer(
+        tokenizer, skip_prompt=True, skip_special_tokens=True
+    )
     kwargs = {**inputs, "max_new_tokens": max_tokens, "streamer": streamer}
     Thread(target=model.generate, kwargs=kwargs).start()
     yield from streamer
