@@ -58,15 +58,21 @@ uv run pytest test_<app>.py -v
 
 **Workflow:** Analyze source (script / notebook / HF model card URL / GitHub URL) → Fetch live Streamlit and HuggingFace docs → Classify UI pattern → Scaffold production package → Code quality → Testing
 
-GitHub URL inputs support two shapes: blob-`.py` URL and repo root (README's first `python`/`py` fenced block extracted). See `streamlit-app-builder/SKILL.md` Step 1 for the full classification, rejection rules, and IR threading.
+GitHub URL inputs support two shapes: blob-`.py` URL and repo root (README's first `python`/`py` fenced block extracted). Set `GH_TOKEN` in the environment for private repos and the 5000/hr authenticated quota. See `streamlit-app-builder/SKILL.md` Step 1 for the full classification, rejection rules, and IR threading.
 
 **Outputs:**
 - `streamlit_app.py` — `st.navigation` router entrypoint
-- `src/<app_name>/` — package with `config.py`, `inference.py` (MLX / transformers / diffusers dispatch), `data.py`, `viz.py`, and `pages/`
+- `src/<app_name>/` — package with `config.py`, `inference.py` (MLX / transformers / diffusers dispatch; chat streaming), `data.py`, `viz.py`, and `pages/`
 - `tests/` — pytest unit tests plus a `streamlit.testing.v1.AppTest` smoke test
 - `.streamlit/config.toml` — Streamlit server and theme config
 - `pyproject.toml` — uv-managed, platform-conditional deps: `mlx-lm` / `mlx-vlm` / `mlx-audio` / `mflux` on Apple Silicon, `transformers` / `diffusers` elsewhere (`audio-to-audio` is Apple-Silicon-only; `mflux` families other than `flux` are Apple-Silicon-only)
 - `.env.example` — documents every env var the app reads
+
+**Live-docs verification:** Step 4 fetches canonical pages from `docs.streamlit.io` and `huggingface.co/docs` (catalogued in `references/streamlit-docs-index.md` and `references/huggingface-docs-index.md`); Step 8 enumerates fetched URLs and cross-checks against the **Verification list** sections in those index files.
+
+**Repository structure:**
+- `streamlit-app-builder/references/scaffolding-templates.md` — `inference.py` and `conftest.py` template variants (per-pipeline-tag, per-`mflux_family`), kept separate from the workflow prose in `SKILL.md` Step 5.
+- `streamlit-app-builder/tests/` — static validator for the Python code blocks embedded in this skill's Markdown files (`ast.parse`, `ruff check --select E,F,I`, mflux routing-regex sanity). Run `uv run pytest` from that directory before committing changes to skill templates.
 
 See `streamlit-app-builder/SKILL.md` for the full workflow.
 

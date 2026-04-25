@@ -1,15 +1,17 @@
+# OS
 .DS_Store
 
+# Python
 __pycache__/
 *.pyc
 .venv/
 
+# Tooling caches
 .pytest_cache/
 .ruff_cache/
 .ty_cache/
 
+# Local (env, worktrees, untracked artifacts)
 .env
-
 .worktrees/
-
 docs/
