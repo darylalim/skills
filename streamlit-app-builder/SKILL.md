@@ -177,7 +177,7 @@ Produce this structure in memory, consumed by all subsequent steps:
     "license": "<SPDX or license_name>",
     "mlx_equivalent": "<mlx-community/...>" or None,
     "mflux_family": "<family key from references/mflux-families.md Part A>" or None,   # populated only by HF-card inputs with pipeline_tag in {text-to-image, image-to-image}; None otherwise
-    "siblings": ["<org>/<model>", ...],   # from Step 1's org-freshness check; [] when the org is not a priority org or no same-task siblings were found
+    "siblings": ["<org>/<model>", ...],   # from Step 1's org-freshness check (HF-card inputs) or Step 2's AST-driven check (code/notebook inputs); [] when no priority-org reference is found or the WebFetch returns nothing usable
     "source_url": "<original input URL>" or None,   # populated by GitHub URL branch only
     "source_ref": "<resolved git ref>" or None,     # populated by GitHub URL branch only
 }
@@ -185,7 +185,11 @@ Produce this structure in memory, consumed by all subsequent steps:
 
 **Absent-value convention:** scalar fields (`inference_fn`, `mlx_equivalent`, `mflux_family`, `source_url`, `source_ref`) use `None` when absent; list fields (`data_fns`, `viz_fns`, `deps`, `siblings`) use `[]`. New fields follow the same pattern. Existing `.py` / `.ipynb` / HF-card branches leave `source_url` / `source_ref` as `None` — only the GitHub URL branch populates them.
 
-**Code input (script or notebook):** AST-parse the code (`ast.parse` + walk `FunctionDef`) to extract top-level function signatures with type annotations. Classify each function as inference (calls `.predict`, `.generate`, `.forward`, `.__call__` on a model), data (reads/writes files, manipulates DataFrames), or viz (returns a matplotlib/plotly figure). Collect imports for dependency inference. **MLX resolution is not performed for code inputs** — `mlx_equivalent` stays `None` and `siblings` stays `[]` even when the snippet contains `from_pretrained("<org>/<model>")` string literals. MLX lookup fires only for HF-card URL inputs, per Step 1.
+**Code input (script or notebook):** AST-parse the code (`ast.parse` + walk `FunctionDef`) to extract top-level function signatures with type annotations. Classify each function as inference (calls `.predict`, `.generate`, `.forward`, `.__call__` on a model), data (reads/writes files, manipulates DataFrames), or viz (returns a matplotlib/plotly figure). Collect imports for dependency inference.
+
+**MLX resolution is not performed for code inputs** — `mlx_equivalent` stays `None` because there is no `pipeline_tag` for the AST walk to anchor an MLX search against. MLX lookup fires only for HF-card URL inputs, per Step 1.
+
+**Sibling extension for code/notebook inputs.** Walk `Call` nodes whose function is named `from_pretrained` (`Call.func.attr == "from_pretrained"`). For each call, inspect the first positional argument or the `pretrained_model_name_or_path=` keyword. If it's a string `Constant` matching `^([\w-]+)/([\w.-]+)$`, capture `<org>/<model>`. For each captured `<org>` in the priority list (`mlx-community`, `google`, `ibm-granite`, `black-forest-labs`), perform the org-freshness `WebFetch` exactly as Step 1 does for HF-card inputs (same prompt, same filtering rules), with one relaxation: code inputs lack a `pipeline_tag`, so the filter applies on org and dedup-against-input only — no `pipeline_tag` filter. Store as `siblings` in the IR.
 
 **`mflux_family` population:** only HF model card inputs with `pipeline_tag ∈ {text-to-image, image-to-image}` can produce a non-`None` value; every other input type (`.py`, `.ipynb`, GitHub URL) and every other `pipeline_tag` leaves `mflux_family = None`. As with `mlx_equivalent`, the skill does not infer `mflux_family` from string literals in a code/notebook input.
 
