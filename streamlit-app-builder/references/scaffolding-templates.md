@@ -18,6 +18,7 @@ Used for `pipeline_tag ∈ {text-generation, conversational}`.
 
 ```python
 """Model loading and inference. Dispatches MLX <-> transformers by platform."""
+from collections.abc import Iterator
 from functools import lru_cache
 from typing import Any
 
@@ -67,9 +68,57 @@ def generate_response(prompt: str, max_new_tokens: int | None = None) -> str:
     inputs = tokenizer(prompt, return_tensors="pt")
     out = model.generate(**inputs, max_new_tokens=max_tokens)
     return tokenizer.decode(out[0], skip_special_tokens=True)
+
+
+def generate_response_stream(prompt: str, max_new_tokens: int | None = None) -> Iterator[str]:
+    """Yield response chunks. Used by the chat page via st.write_stream."""
+    backend, model, tokenizer = load_model()
+    max_tokens = max_new_tokens or config.MAX_NEW_TOKENS
+    if backend == "mlx":
+        from mlx_lm import stream_generate
+        for response in stream_generate(model, tokenizer, prompt=prompt, max_tokens=max_tokens):
+            yield response.text
+        return
+    from threading import Thread
+
+    from transformers import TextIteratorStreamer
+    inputs = tokenizer(prompt, return_tensors="pt")
+    streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
+    kwargs = {**inputs, "max_new_tokens": max_tokens, "streamer": streamer}
+    Thread(target=model.generate, kwargs=kwargs).start()
+    yield from streamer
 ```
 
-(The `generate_response_stream` function is added in Task 17.)
+## `tests/test_inference.py` — streaming
+
+Append to the test file produced from SKILL.md Step 5's `test_inference.py` template:
+
+```python
+def test_generate_response_stream_yields_chunks(monkeypatch):
+    """Force MLX path; patch stream_generate to a deterministic iterable."""
+    from <app_name> import inference
+
+    class _Resp:
+        def __init__(self, text):
+            self.text = text
+
+    monkeypatch.setattr(
+        inference, "load_model",
+        lambda: ("mlx", object(), object()),
+    )
+    monkeypatch.setattr(
+        "mlx_lm.stream_generate",
+        lambda *a, **kw: iter([_Resp("hello"), _Resp(" world")]),
+        raising=False,
+    )
+    if hasattr(inference.load_model, "cache_clear"):
+        inference.load_model.cache_clear()
+
+    chunks = list(inference.generate_response_stream("prompt", max_new_tokens=5))
+    assert chunks == ["hello", " world"]
+```
+
+`raising=False` lets the patch install a fake `stream_generate` even on hosts where `mlx_lm` isn't importable. Forcing the MLX path keeps the test deterministic — the transformers path uses a background `Thread` and `TextIteratorStreamer`, which is harder to drive synchronously in a unit test.
 
 ## Variant A: text-to-image `inference.py` (mflux + diffusers fallback)
 
