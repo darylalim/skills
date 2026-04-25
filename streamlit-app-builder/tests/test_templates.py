@@ -52,3 +52,38 @@ def test_extract_honors_skip_marker(tmp_path):
     f = tmp_path / "doc.md"
     f.write_text("<!-- skip-validate -->\n```python\nbroken syntax !!!\n```\n")
     assert find_python_blocks(f) == []
+
+
+PLACEHOLDER_SUBSTITUTIONS = {
+    "<app_name>": "app",
+    "<App Name>": "App",
+    "<app-name>": "app",
+    "<org>/<model>": "test-org/test-model",
+    "<mlx-community/...>": "mlx-community/test",
+    "<family>": "flux2",
+    "<feature>": "feature",
+    "<ModelClass>": "Model",
+    "<id>": "test-org/test-model",
+    "<name>": "name",
+}
+
+
+def substitute_placeholders(content: str) -> str:
+    for placeholder, replacement in PLACEHOLDER_SUBSTITUTIONS.items():
+        content = content.replace(placeholder, replacement)
+    return content
+
+
+def test_substitute_replaces_app_name():
+    assert substitute_placeholders("from <app_name> import x") == "from app import x"
+
+
+def test_substitute_replaces_org_model():
+    assert (
+        substitute_placeholders('load("<org>/<model>")')
+        == 'load("test-org/test-model")'
+    )
+
+
+def test_substitute_passes_unmatched_text_through():
+    assert substitute_placeholders("plain text") == "plain text"
