@@ -8,7 +8,68 @@ The mflux family-specific blocks in Part B of `mflux-families.md` are inlined in
 
 Used for `pipeline_tag ∈ {text-generation, conversational}`.
 
-(body added in Task 9)
+**Files produced:** `src/<app_name>/inference.py`
+
+**Placeholder substitutions at scaffold time:**
+- `<app_name>` → app's importable Python name
+- `MLX_MODEL_ID_DEFAULT` value → matched mlx-community model ID, or `None` if no MLX equivalent
+
+**Body:**
+
+```python
+"""Model loading and inference. Dispatches MLX <-> transformers by platform."""
+from functools import lru_cache
+from typing import Any
+
+from <app_name> import config
+
+# MLX model ID chosen at scaffold time (highest downloads under mlx-community).
+# Override by setting MLX_MODEL_ID in .env.
+MLX_MODEL_ID_DEFAULT: str | None = "<mlx-community/...>"
+
+
+@lru_cache(maxsize=1)
+def load_model() -> Any:
+    """Lazy-load the model once per process."""
+    if config.IS_APPLE_SILICON and MLX_MODEL_ID_DEFAULT:
+        return _load_mlx()
+    return _load_transformers()
+
+
+def _load_mlx():
+    import os as _os
+
+    from mlx_lm import load
+
+    mlx_id = _os.getenv("MLX_MODEL_ID", MLX_MODEL_ID_DEFAULT)
+    model, tokenizer = load(mlx_id)
+    return ("mlx", model, tokenizer)
+
+
+def _load_transformers():
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+
+    tokenizer = AutoTokenizer.from_pretrained(
+        config.MODEL_ID, revision=config.MODEL_REVISION, token=config.HF_TOKEN
+    )
+    model = AutoModelForCausalLM.from_pretrained(
+        config.MODEL_ID, revision=config.MODEL_REVISION, token=config.HF_TOKEN
+    )
+    return ("transformers", model, tokenizer)
+
+
+def generate_response(prompt: str, max_new_tokens: int | None = None) -> str:
+    backend, model, tokenizer = load_model()
+    max_tokens = max_new_tokens or config.MAX_NEW_TOKENS
+    if backend == "mlx":
+        from mlx_lm import generate
+        return generate(model, tokenizer, prompt=prompt, max_tokens=max_tokens)
+    inputs = tokenizer(prompt, return_tensors="pt")
+    out = model.generate(**inputs, max_new_tokens=max_tokens)
+    return tokenizer.decode(out[0], skip_special_tokens=True)
+```
+
+(The `generate_response_stream` function is added in Task 17.)
 
 ## Variant A: text-to-image `inference.py` (mflux + diffusers fallback)
 
