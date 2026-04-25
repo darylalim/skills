@@ -437,4 +437,51 @@ For `image-to-image`, swap `DiffusionPipeline` for `AutoPipelineForImage2Image`,
 
 ## Test fixtures: `tests/conftest.py`
 
-(body added in Task 14)
+**Files produced:** `tests/conftest.py`
+
+**Placeholder substitutions:** `<app_name>` → app's importable name throughout.
+
+**Body:**
+
+```python
+"""Test fixtures. Set required env vars before package import."""
+import os
+
+os.environ.setdefault("MODEL_ID", "test-model")
+# os.environ.setdefault("HF_TOKEN", "test-token")  # enable for gated models
+
+import pytest
+
+
+class _StubModel:
+    """Minimal interface used by inference.py."""
+    def generate(self, *args, **kwargs):
+        return [[0, 1, 2]]
+
+    def predict(self, x):
+        return [0] * len(x)
+
+
+@pytest.fixture
+def mock_model(monkeypatch):
+    from <app_name> import inference
+    monkeypatch.setattr(inference, "load_model", lambda: ("stub", _StubModel(), None))
+    return _StubModel()
+
+
+class _StubMfluxModel:
+    """Minimal interface used by mflux-backed inference.py templates."""
+    def generate_image(self, *args, **kwargs):
+        from PIL import Image
+
+        class _StubGenerated:
+            image = Image.new("RGB", (64, 64))
+        return _StubGenerated()
+
+
+@pytest.fixture
+def mock_mflux_model(monkeypatch):
+    from <app_name> import inference
+    monkeypatch.setattr(inference, "load_model", lambda: ("mflux", _StubMfluxModel()))
+    return _StubMfluxModel()
+```
