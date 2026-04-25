@@ -1,11 +1,12 @@
 """Static validator for code templates in skill markdown files."""
 from __future__ import annotations
 
+import ast
 import re
 from dataclasses import dataclass
 from pathlib import Path
 
-import pytest  # noqa: F401  # used in Task 4 parametrize
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]  # streamlit-app-builder/
 
@@ -58,6 +59,9 @@ PLACEHOLDER_SUBSTITUTIONS = {
     "<app_name>": "app",
     "<App Name>": "App",
     "<app-name>": "app",
+    "<default_height>": "1024",
+    "<default_steps>": "20",
+    "<default_width>": "1024",
     "<org>/<model>": "test-org/test-model",
     "<mlx-community/...>": "mlx-community/test",
     "<family>": "flux2",
@@ -87,3 +91,34 @@ def test_substitute_replaces_org_model():
 
 def test_substitute_passes_unmatched_text_through():
     assert substitute_placeholders("plain text") == "plain text"
+
+
+MARKDOWN_FILES = [
+    REPO_ROOT / "SKILL.md",
+    REPO_ROOT / "references" / "pipeline-tag-patterns.md",
+    REPO_ROOT / "references" / "mflux-families.md",
+]
+
+
+def _all_blocks() -> list[CodeBlock]:
+    out: list[CodeBlock] = []
+    for f in MARKDOWN_FILES:
+        if f.exists():
+            out.extend(find_python_blocks(f))
+    # Append scaffolding-templates.md once it exists (added in Task 8).
+    extra = REPO_ROOT / "references" / "scaffolding-templates.md"
+    if extra.exists():
+        out.extend(find_python_blocks(extra))
+    return out
+
+
+@pytest.mark.parametrize("block", _all_blocks(), ids=lambda b: f"{b.source_file.name}:{b.line_no}")
+def test_block_parses_as_python(block):
+    substituted = substitute_placeholders(block.content)
+    try:
+        ast.parse(substituted)
+    except SyntaxError as e:
+        pytest.fail(
+            f"{block.source_file.name}:{block.line_no} SyntaxError: {e.msg} "
+            f"(line {e.lineno}, col {e.offset})"
+        )
