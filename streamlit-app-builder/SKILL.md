@@ -122,6 +122,8 @@ Resolve the model ID from the URL (strip `https://huggingface.co/` prefix; keep 
 
 Classified **after** the `.ipynb` and HuggingFace branches — those already claim their URL shapes; this branch only sees GitHub `.py` blob URLs, repo-root URLs, or unsupported variants.
 
+**Authentication (optional but recommended):** at GitHub URL branch entry, read `GH_TOKEN` from the environment. If set, attach `Authorization: Bearer $GH_TOKEN` to every `api.github.com` and `raw.githubusercontent.com` request below. With a token, the rate ceiling is 5000/hr and private repos that the token's user can read become accessible. Without a token, the unauthenticated 60/hr ceiling applies.
+
 **URL normalization (required before pattern matching):** strip any query string (`?foo=bar`) and fragment (`#L12`) from the input URL, and apply the classification patterns below to the cleaned URL only. Trailing-slash tolerance is preserved by the patterns themselves. Example: `…/inference.py?ref=main#L42` → `…/inference.py`.
 
 **Classification patterns, in order:**
@@ -142,17 +144,17 @@ Branch names, tags, and 7–40-char commit SHAs all match the `[^/]+` ref class.
 **Blob-`.py` mode:**
 
 1. Resolve `blob/<ref>/<path>.py` → `https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>.py`.
-2. Download with `curl -L --max-time 30`. On non-200 response: fail with the HTTP status code and resolved URL. If the status is 404 and the original URL had multiple path segments between `blob/` and the `.py` file, the branch name may contain a slash (e.g., `feature/foo-bar`) — the regex mis-parses such URLs; ask the user to pass a blob URL using the default branch, a tag, or a commit SHA instead.
+2. Download with `curl -L --max-time 30 ${GH_TOKEN:+-H "Authorization: Bearer $GH_TOKEN"}`. On non-200 response: fail with the HTTP status code and resolved URL. If the status is 404 and the original URL had multiple path segments between `blob/` and the `.py` file, the branch name may contain a slash (e.g., `feature/foo-bar`) — the regex mis-parses such URLs; ask the user to pass a blob URL using the default branch, a tag, or a commit SHA instead.
 3. Feed the downloaded source into Step 2's AST walker, unchanged.
 4. Populate IR: `source_url = <original input URL>`, `source_ref = <ref parsed from URL>`, `license = None` (blob mode makes no GitHub API call, so SPDX metadata is unavailable — downstream README / Step 8 license-flag treat `None` per the absent-value convention).
 
 **Repo-root mode:**
 
-1. `GET https://api.github.com/repos/<owner>/<repo>`. Capture `default_branch` and `license.spdx_id` from the response. When the repo has no detected license, the API returns `license: null` (or omits the `license` object entirely) — store `license = None` in that case, matching blob-`.py` mode.
+1. `GET https://api.github.com/repos/<owner>/<repo>` (with `Authorization: Bearer $GH_TOKEN` header when `GH_TOKEN` is set). Capture `default_branch` and `license.spdx_id` from the response. When the repo has no detected license, the API returns `license: null` (or omits the `license` object entirely) — store `license = None` in that case, matching blob-`.py` mode.
    - HTTP 404 → fail: *"Repo not found or private: `<owner>/<repo>`."*
-   - HTTP 403 (rate limit) → fail: *"GitHub API rate limit hit. Retry later or set `GH_TOKEN` in the environment."* (Authenticated calls are a separate change.)
+   - HTTP 403 (rate limit) → fail with a context-aware message: with `GH_TOKEN` set, *"Rate limit hit on authenticated GitHub request — wait or use a different token."*; without `GH_TOKEN`, *"Rate limit hit on unauthenticated GitHub request (60/hr ceiling). Set `GH_TOKEN` in the environment for the 5000/hr authenticated quota."*
    - Other non-200 → fail with status code and URL.
-2. Fetch `https://raw.githubusercontent.com/<owner>/<repo>/<default_branch>/README.md` with `curl -L --max-time 30`. On 404, retry once with lowercase `readme.md` (case-sensitivity varies by repo). If both fail, emit: *"Repo has no `README.md` or `readme.md` at the default branch root. If the repo uses a different filename (e.g., `Readme.md`, `README.rst`), pass a blob URL to the file you want to wrap instead."*
+2. Fetch `https://raw.githubusercontent.com/<owner>/<repo>/<default_branch>/README.md` with `curl -L --max-time 30 ${GH_TOKEN:+-H "Authorization: Bearer $GH_TOKEN"}`. On 404, retry once with lowercase `readme.md` (case-sensitivity varies by repo). If both fail, emit: *"Repo has no `README.md` or `readme.md` at the default branch root. If the repo uses a different filename (e.g., `Readme.md`, `README.rst`), pass a blob URL to the file you want to wrap instead."*
 3. Extract fenced code blocks matching `` ```(?:python|py)\n(.*?)``` `` (DOTALL). Take the **first match whose content is not purely install/setup commands** — skip blocks whose every non-comment line begins with `pip`, `conda`, `uv add`, `poetry add`, `!pip`, or `brew` (badge / install snippets that commonly precede the real usage example). On zero matching blocks (either no `python`-tagged blocks at all, or all are install-only): fail with *"No usable `python`-tagged code block found in `<owner>/<repo>`'s `README.md` (install-only blocks skipped). Pass a blob URL to the specific file to wrap — e.g., `github.com/<owner>/<repo>/blob/<default_branch>/inference.py`."*
 4. Run `ast.parse` on the extracted snippet. On `SyntaxError`: fail — *"First `python` block in README has syntax errors: `<msg>`. Pass a blob URL instead."*
 5. **Local-import guard.** Walk the AST for `Import` / `ImportFrom` nodes and reject **relative imports only** (`from . import x`, `from .foo import y`, `from .. import z`) with *"README snippet uses a relative import, which isn't resolvable from a standalone scaffold. Pass a blob URL to the source file instead."* All absolute imports pass through. If an absolute import turns out to be local-only (no PyPI counterpart), Step 6's `uv add <name>` fails there with a clear error — late-binding but reliable, and it avoids the false-positive/negative traps of heuristic local-import detection at this step.
