@@ -317,6 +317,7 @@ if __name__ == "__main__":
 [server]
 headless = true
 port = 8501
+fileWatcherType = "watchdog"
 
 [browser]
 gatherUsageStats = false
@@ -647,7 +648,7 @@ uv init --name <app-name> --package
 uv add streamlit python-dotenv huggingface_hub
 uv add "mlx-lm;platform_machine=='arm64' and sys_platform=='darwin'"
 uv add "transformers;platform_machine!='arm64' or sys_platform!='darwin'"
-uv add --dev ruff ty pytest
+uv add --dev ruff ty pytest watchdog
 ```
 
 Versions are not pinned on the command line — `uv add` resolves the current latest at skill-run time and writes the resolved specifier to `pyproject.toml`.
