@@ -242,6 +242,10 @@ Fetched for every run — Streamlit is the output framework regardless of input 
 
 If any fetched page shows an API that differs from the template in this file, prefer the fetched docs. Update the template accordingly before generating the app. When a page is unreachable, proceed with the templates here and note in the final report: "live verification skipped for <URL>".
 
+### Maintain a fetched-URLs list
+
+As you fetch each URL above, record it. In Step 8 the report enumerates this list and verifies it against the **Verification list** sections in `references/streamlit-docs-index.md` and `references/huggingface-docs-index.md`. If any required URL is missing at Step 8, return here and fetch it before reporting the scaffold complete.
+
 ## Step 5: Scaffold files
 
 Create the following directory tree (substitute `<app-name>` / `<app_name>`):
@@ -686,7 +690,18 @@ When `source_ref` is None, omit the `(ref: …)` parenthetical. When `source_url
 Surface:
 
 1. **Files created**, grouped by purpose: app code, config, tests, project files.
-2. **Chosen model variant** — if MLX resolution returned a match, show `mlx-community/<variant>` alongside the original `<org>/<model>`; otherwise note "no MLX equivalent found, app uses transformers on all platforms."
+2. **Live docs verified.** List the URLs fetched from each index, e.g.:
+
+   ```
+   Streamlit docs (8 fetched, all required):
+     - https://docs.streamlit.io/develop/concepts/multipage-apps/overview
+     - ...
+   HuggingFace docs (3 fetched, all required):
+     - ...
+   ```
+
+   Cross-check against the **Verification list** sections in `references/streamlit-docs-index.md` and `references/huggingface-docs-index.md`. If any "Always" URL is missing, or any conditional URL whose trigger applies was skipped, return to Step 4 — do not report the scaffold as complete.
+3. **Chosen model variant** — if MLX resolution returned a match, show `mlx-community/<variant>` alongside the original `<org>/<model>`; otherwise note "no MLX equivalent found, app uses transformers on all platforms."
 
    **Sibling models (conditional)** — when Step 2's `siblings` list is non-empty, append:
 
@@ -705,14 +720,14 @@ Surface:
    ```
 
    When the input is an HF model card with `pipeline_tag ∈ {text-to-image, image-to-image}` and `mflux_family = None`, emit instead: *"No mflux family matched — app will use diffusers on all platforms."* (Script / notebook / GitHub URL inputs skip both mflux-related lines because `pipeline_tag` is not in the IR for those input types.)
-3. **Apple-Silicon-only warning (when applicable)** — emit one of the two messages below depending on the trigger:
+4. **Apple-Silicon-only warning (when applicable)** — emit one of the two messages below depending on the trigger:
    - If the classified pipeline is `audio-to-audio`: *"This scaffold requires Apple Silicon at runtime. On non-Apple-Silicon hosts (including Intel Macs), `uv sync` will not install `mlx-audio` and the app will error at model load."*
    - If `mflux_family` is an Apple-Silicon-only family (per `references/mflux-families.md` Part A): *"This scaffold requires Apple Silicon at runtime. On non-Apple-Silicon hosts (including Intel Macs), `uv sync` will not install `mflux` and the app will error at model load."*
 
    **Install-size note (when `mflux_family` is non-`None`):** `uv sync` on Apple Silicon installs ~2–3 GB of model-inference dependencies (mflux pulls `torch`, `opencv-python`, `sentencepiece`, etc.); first run may take several minutes. Silent otherwise.
-4. **License + commercial-use flag** — from `references/license-flags.md`, if the model's license matches a flagged entry. Quote the flag text inline.
-5. **Gated-model setup** — when `is_gated` is `true` in the IR (only HF-card inputs set this today; script / notebook / GitHub inputs leave it `false`), show the `huggingface-cli login` command and the alternative `HF_TOKEN` path.
-6. **Exact local-run command:**
+5. **License + commercial-use flag** — from `references/license-flags.md`, if the model's license matches a flagged entry. Quote the flag text inline.
+6. **Gated-model setup** — when `is_gated` is `true` in the IR (only HF-card inputs set this today; script / notebook / GitHub inputs leave it `false`), show the `huggingface-cli login` command and the alternative `HF_TOKEN` path.
+7. **Exact local-run command:**
 
    ```bash
    uv sync
@@ -720,7 +735,7 @@ Surface:
    streamlit run streamlit_app.py
    ```
 
-7. **Non-goals reminder** — a short list of things the scaffold does NOT include (auth, Docker, CI, DB, observability), explicitly marked as the team's responsibility.
+8. **Non-goals reminder** — a short list of things the scaffold does NOT include (auth, Docker, CI, DB, observability), explicitly marked as the team's responsibility.
 
 ## Output checklist
 
