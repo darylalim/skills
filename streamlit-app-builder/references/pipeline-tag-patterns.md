@@ -9,7 +9,7 @@ When the input is an HF model card, the skill reads `pipeline_tag` from `https:/
 ```python
 # Chat page body
 import streamlit as st
-from <app_name>.inference import generate_response
+from <app_name>.inference import generate_response_stream
 
 st.title("Chat")
 if "messages" not in st.session_state:
@@ -23,8 +23,7 @@ if prompt := st.chat_input("Message"):
     with st.chat_message("user"):
         st.markdown(prompt)
     with st.chat_message("assistant"):
-        response = generate_response(prompt)
-        st.markdown(response)
+        response = st.write_stream(generate_response_stream(prompt))
     st.session_state.messages.append({"role": "assistant", "content": response})
 ```
 
