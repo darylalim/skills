@@ -261,15 +261,133 @@ def generate_image(prompt, width, height, num_inference_steps, seed) -> Image.Im
 
 ## Variant B: image-to-image `inference.py` — `flux2`
 
-(body added in Task 12)
+**Files produced:** `src/<app_name>/inference.py`
+
+**Trigger:** `pipeline_tag = image-to-image` AND `mflux_family = flux2`.
+
+**Body:**
+
+```python
+"""Image-to-image inference. Apple-Silicon-only (no diffusers fallback for flux2)."""
+from functools import lru_cache
+from typing import Any
+
+from <app_name> import config
+from PIL import Image
+
+
+@lru_cache(maxsize=1)
+def load_model() -> Any:
+    if not config.IS_APPLE_SILICON:
+        raise RuntimeError(
+            "This app requires Apple Silicon. The flux2 family has no "
+            "diffusers fallback. Run on a Mac with Apple Silicon, or "
+            "pick a model family with a generic diffusers backend "
+            "(e.g., any black-forest-labs/FLUX.1-* model)."
+        )
+    from mflux.models.common.config import ModelConfig
+    from mflux.models.flux2.variants import Flux2KleinEdit
+
+    model = Flux2KleinEdit(model_config=ModelConfig.flux2_klein_9b())
+    return ("mflux", model)
+
+
+def edit_image(prompt, image_paths, num_inference_steps, seed) -> Image.Image:
+    _, model = load_model()
+    return model.generate_image(
+        seed=seed, prompt=prompt,
+        image_paths=image_paths,
+        num_inference_steps=num_inference_steps,
+    ).image
+```
 
 ## Variant B: image-to-image `inference.py` — `qwen_image`
 
-(body added in Task 12)
+**Files produced:** `src/<app_name>/inference.py`
+
+**Trigger:** `pipeline_tag = image-to-image` AND `mflux_family = qwen_image`.
+
+**Body:**
+
+```python
+"""Image-to-image inference. Apple-Silicon-only (no diffusers fallback for qwen_image)."""
+from functools import lru_cache
+from typing import Any
+
+from <app_name> import config
+from PIL import Image
+
+
+@lru_cache(maxsize=1)
+def load_model() -> Any:
+    if not config.IS_APPLE_SILICON:
+        raise RuntimeError(
+            "This app requires Apple Silicon. The qwen_image family has no "
+            "diffusers fallback. Run on a Mac with Apple Silicon, or "
+            "pick a model family with a generic diffusers backend "
+            "(e.g., any black-forest-labs/FLUX.1-* model)."
+        )
+    from mflux.models.common.config import ModelConfig
+    from mflux.models.qwen.variants.edit.qwen_image_edit import QwenImageEdit
+
+    model = QwenImageEdit(model_config=ModelConfig.qwen_image_edit())
+    return ("mflux", model)
+
+
+def edit_image(prompt, image_paths, num_inference_steps, seed) -> Image.Image:
+    _, model = load_model()
+    return model.generate_image(
+        seed=seed, prompt=prompt,
+        image_paths=image_paths,
+        num_inference_steps=num_inference_steps,
+        guidance=2.5,
+    ).image
+```
 
 ## Variant B: image-to-image `inference.py` — `fibo`
 
-(body added in Task 12)
+**Files produced:** `src/<app_name>/inference.py`
+
+**Trigger:** `pipeline_tag = image-to-image` AND `mflux_family = fibo`.
+
+**Note:** `FIBOEdit.generate_image` takes a single `image_path` (not a list). The wrapper passes `image_paths[0]`.
+
+**Body:**
+
+```python
+"""Image-to-image inference. Apple-Silicon-only (no diffusers fallback for fibo)."""
+from functools import lru_cache
+from typing import Any
+
+from <app_name> import config
+from PIL import Image
+
+
+@lru_cache(maxsize=1)
+def load_model() -> Any:
+    if not config.IS_APPLE_SILICON:
+        raise RuntimeError(
+            "This app requires Apple Silicon. The fibo family has no "
+            "diffusers fallback. Run on a Mac with Apple Silicon, or "
+            "pick a model family with a generic diffusers backend "
+            "(e.g., any black-forest-labs/FLUX.1-* model)."
+        )
+    from mflux.models.common.config import ModelConfig
+    from mflux.models.fibo.variants.edit import FIBOEdit
+
+    model = FIBOEdit(model_config=ModelConfig.fibo_edit())
+    return ("mflux", model)
+
+
+def edit_image(prompt, image_paths, num_inference_steps, seed) -> Image.Image:
+    _, model = load_model()
+    return model.generate_image(
+        seed=seed, prompt=prompt,
+        image_path=image_paths[0],
+        num_inference_steps=num_inference_steps,
+        guidance=3.5,
+    ).image
+```
 
 ## Variant: diffusers-only fallback `inference.py`
 
