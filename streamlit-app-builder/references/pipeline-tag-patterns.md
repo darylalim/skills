@@ -9,7 +9,7 @@ When the input is an HF model card, the skill reads `pipeline_tag` from `https:/
 ```python
 # Chat page body
 import streamlit as st
-from <app_name>.inference import generate_response
+from <app_name>.inference import generate_response_stream
 
 st.title("Chat")
 if "messages" not in st.session_state:
@@ -23,8 +23,7 @@ if prompt := st.chat_input("Message"):
     with st.chat_message("user"):
         st.markdown(prompt)
     with st.chat_message("assistant"):
-        response = generate_response(prompt)
-        st.markdown(response)
+        response = st.write_stream(generate_response_stream(prompt))
     st.session_state.messages.append({"role": "assistant", "content": response})
 ```
 
@@ -114,7 +113,9 @@ import streamlit as st
 from <app_name>.inference import transcribe
 
 st.title("Transcribe Audio")
-audio = st.audio_input("Record") or st.file_uploader("Upload", type=["wav", "mp3", "m4a", "flac"])
+audio = st.audio_input("Record") or st.file_uploader(
+    "Upload", type=["wav", "mp3", "m4a", "flac"]
+)
 if audio and st.button("Transcribe"):
     text = transcribe(audio)
     st.text_area("Transcript", text, height=200)
@@ -193,6 +194,24 @@ if img and st.button("Caption"):
     st.write(caption(img))
 ```
 
+## Image-text-to-text (visual question answering, multimodal chat)
+
+`pipeline_tag`: `image-text-to-text`
+
+```python
+import streamlit as st
+from <app_name>.inference import answer_about_image
+
+st.title("Image + Text")
+img = st.file_uploader("Upload", type=["png", "jpg", "jpeg", "webp"])
+question = st.text_area("Question about the image", height=100)
+if st.button("Answer", disabled=not (img and question.strip())):
+    st.image(img)
+    st.write(answer_about_image(image=img, question=question))
+```
+
+Inference function signature: `answer_about_image(image, question: str) -> str`. MLX backend: `mlx_vlm.generate(model, processor, formatted_prompt, image)` with the chat template applied to `question`. Fallback: `pipeline("image-text-to-text", model=config.MODEL_ID)` with both image and question kwargs.
+
 ## Text to image
 
 `pipeline_tag`: `text-to-image`
@@ -202,7 +221,6 @@ Scaffold-time substitution: the `value=` arguments on the width/height/steps sli
 ```python
 """Text-to-image page."""
 import streamlit as st
-
 from <app_name> import inference
 
 
@@ -237,7 +255,6 @@ import tempfile
 from pathlib import Path
 
 import streamlit as st
-
 from <app_name> import inference
 
 
@@ -277,8 +294,8 @@ def render() -> None:
 `pipeline_tag`: missing / unrecognized / not applicable (code-based input without a clear pattern)
 
 ```python
-import streamlit as st
 import pandas as pd
+import streamlit as st
 from <app_name>.inference import run  # or equivalent entry from source
 
 st.title("Run")

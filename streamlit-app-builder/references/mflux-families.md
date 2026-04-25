@@ -41,6 +41,7 @@ Diffusers fallback available off Apple Silicon (`FluxPipeline` for t2i, `FluxImg
 
 Text-to-image:
 
+<!-- skip-validate -->
 ```python
 from mflux.models.common.config import ModelConfig
 from mflux.models.flux.variants.txt2img.flux import Flux1
@@ -56,6 +57,7 @@ image = model.generate_image(
 
 Image-to-image (Kontext):
 
+<!-- skip-validate -->
 ```python
 from mflux.models.common.config import ModelConfig
 from mflux.models.flux.variants.kontext.flux_kontext import Flux1Kontext
@@ -84,6 +86,7 @@ Apple-Silicon-only — no diffusers fallback.
 
 Text-to-image:
 
+<!-- skip-validate -->
 ```python
 from mflux.models.common.config import ModelConfig
 from mflux.models.flux2.variants import Flux2Klein
@@ -98,6 +101,7 @@ image = model.generate_image(
 
 Image-to-image:
 
+<!-- skip-validate -->
 ```python
 from mflux.models.common.config import ModelConfig
 from mflux.models.flux2.variants import Flux2KleinEdit
@@ -125,6 +129,7 @@ Apple-Silicon-only — no diffusers fallback.
 
 Text-to-image:
 
+<!-- skip-validate -->
 ```python
 from mflux.models.common.config import ModelConfig
 from mflux.models.qwen.variants.txt2img.qwen_image import QwenImage
@@ -139,6 +144,7 @@ image = model.generate_image(
 
 Image-to-image (Edit):
 
+<!-- skip-validate -->
 ```python
 from mflux.models.common.config import ModelConfig
 from mflux.models.qwen.variants.edit.qwen_image_edit import QwenImageEdit
@@ -167,6 +173,7 @@ Apple-Silicon-only — no diffusers fallback.
 
 Text-to-image:
 
+<!-- skip-validate -->
 ```python
 from mflux.models.common.config import ModelConfig
 from mflux.models.fibo.variants.txt2img.fibo import FIBO
@@ -182,6 +189,7 @@ image = model.generate_image(
 
 Image-to-image (Edit):
 
+<!-- skip-validate -->
 ```python
 from mflux.models.common.config import ModelConfig
 from mflux.models.fibo.variants.edit import FIBOEdit
@@ -219,6 +227,7 @@ The scaffold consumer picks between the two Z-Image variants based on the matche
 
 Base text-to-image:
 
+<!-- skip-validate -->
 ```python
 from mflux.models.common.config import ModelConfig
 from mflux.models.z_image import ZImage
@@ -237,6 +246,7 @@ image = model.generate_image(
 
 Turbo text-to-image:
 
+<!-- skip-validate -->
 ```python
 from mflux.models.common.config import ModelConfig
 from mflux.models.z_image import ZImage

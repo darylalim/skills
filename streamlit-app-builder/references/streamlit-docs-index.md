@@ -47,3 +47,26 @@ Canonical `docs.streamlit.io` URLs used by the `streamlit-app-builder` skill. Fe
 - Deployment docs (Community Cloud, Snowflake) — the skill's non-goals explicitly defer deployment to the consuming team.
 - `st.connection` / database integrations — the skill does not scaffold data layers.
 - Advanced theming / custom components — teams override `.streamlit/config.toml` directly per their branding.
+
+## Verification list (Step 4 → Step 8 enforcement)
+
+In the Step 8 report, list every URL fetched from this index. The skill must fetch every "Always" URL and every conditional URL whose trigger applies.
+
+**Always (every run):**
+- https://docs.streamlit.io/develop/concepts/multipage-apps/overview
+- https://docs.streamlit.io/develop/api-reference/navigation/st.navigation
+- https://docs.streamlit.io/develop/api-reference/navigation/st.page
+- https://docs.streamlit.io/develop/api-reference/caching-and-state/st.cache_resource
+- https://docs.streamlit.io/develop/api-reference/caching-and-state/st.cache_data
+- https://docs.streamlit.io/develop/api-reference/app-testing/st.testing.v1.apptest
+- https://docs.streamlit.io/develop/concepts/connections/secrets-management
+
+**Conditional (fetch when trigger matches):**
+- trigger: `pattern == chat` → https://docs.streamlit.io/develop/api-reference/chat/st.chat_input
+- trigger: `pattern == chat` → https://docs.streamlit.io/develop/api-reference/chat/st.chat_message
+- trigger: `pattern ∈ {asr, audio-to-audio, tts}` → https://docs.streamlit.io/develop/api-reference/widgets/st.audio_input
+- trigger: `pattern ∈ {asr, audio-to-audio, tts}` → https://docs.streamlit.io/develop/api-reference/media/st.audio
+- trigger: `pattern ∈ {image-classification, image-to-text, image-text-to-text, object-detection, image-to-image, text-to-image}` → https://docs.streamlit.io/develop/api-reference/widgets/st.file_uploader
+- trigger: `pattern ∈ {image-classification, image-to-text, image-text-to-text, object-detection, image-to-image, text-to-image}` → https://docs.streamlit.io/develop/api-reference/media/st.image
+- trigger: `pattern == data-processing` → https://docs.streamlit.io/develop/api-reference/data/st.dataframe
+- trigger: `pattern == visualization` → https://docs.streamlit.io/develop/api-reference/charts/st.plotly_chart

@@ -92,6 +92,7 @@ curl -L -o notebook.ipynb "<resolved_raw_url>"
 
 ```python
 import json
+
 with open("notebook.ipynb") as f:
     nb = json.load(f)
 code_cells = [
@@ -121,6 +122,8 @@ Resolve the model ID from the URL (strip `https://huggingface.co/` prefix; keep 
 
 Classified **after** the `.ipynb` and HuggingFace branches — those already claim their URL shapes; this branch only sees GitHub `.py` blob URLs, repo-root URLs, or unsupported variants.
 
+**Authentication (optional but recommended):** at GitHub URL branch entry, read `GH_TOKEN` from the environment. If set, attach `Authorization: Bearer $GH_TOKEN` to every `api.github.com` and `raw.githubusercontent.com` request below. With a token, the rate ceiling is 5000/hr and private repos that the token's user can read become accessible. Without a token, the unauthenticated 60/hr ceiling applies.
+
 **URL normalization (required before pattern matching):** strip any query string (`?foo=bar`) and fragment (`#L12`) from the input URL, and apply the classification patterns below to the cleaned URL only. Trailing-slash tolerance is preserved by the patterns themselves. Example: `…/inference.py?ref=main#L42` → `…/inference.py`.
 
 **Classification patterns, in order:**
@@ -141,17 +144,17 @@ Branch names, tags, and 7–40-char commit SHAs all match the `[^/]+` ref class.
 **Blob-`.py` mode:**
 
 1. Resolve `blob/<ref>/<path>.py` → `https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>.py`.
-2. Download with `curl -L --max-time 30`. On non-200 response: fail with the HTTP status code and resolved URL. If the status is 404 and the original URL had multiple path segments between `blob/` and the `.py` file, the branch name may contain a slash (e.g., `feature/foo-bar`) — the regex mis-parses such URLs; ask the user to pass a blob URL using the default branch, a tag, or a commit SHA instead.
+2. Download with `curl -L --max-time 30 ${GH_TOKEN:+-H "Authorization: Bearer $GH_TOKEN"}`. On non-200 response: fail with the HTTP status code and resolved URL. If the status is 404 and the original URL had multiple path segments between `blob/` and the `.py` file, the branch name may contain a slash (e.g., `feature/foo-bar`) — the regex mis-parses such URLs; ask the user to pass a blob URL using the default branch, a tag, or a commit SHA instead.
 3. Feed the downloaded source into Step 2's AST walker, unchanged.
 4. Populate IR: `source_url = <original input URL>`, `source_ref = <ref parsed from URL>`, `license = None` (blob mode makes no GitHub API call, so SPDX metadata is unavailable — downstream README / Step 8 license-flag treat `None` per the absent-value convention).
 
 **Repo-root mode:**
 
-1. `GET https://api.github.com/repos/<owner>/<repo>`. Capture `default_branch` and `license.spdx_id` from the response. When the repo has no detected license, the API returns `license: null` (or omits the `license` object entirely) — store `license = None` in that case, matching blob-`.py` mode.
+1. `GET https://api.github.com/repos/<owner>/<repo>` (with `Authorization: Bearer $GH_TOKEN` header when `GH_TOKEN` is set). Capture `default_branch` and `license.spdx_id` from the response. When the repo has no detected license, the API returns `license: null` (or omits the `license` object entirely) — store `license = None` in that case, matching blob-`.py` mode.
    - HTTP 404 → fail: *"Repo not found or private: `<owner>/<repo>`."*
-   - HTTP 403 (rate limit) → fail: *"GitHub API rate limit hit. Retry later or set `GH_TOKEN` in the environment."* (Authenticated calls are a separate change.)
+   - HTTP 403 (rate limit) → fail with a context-aware message: with `GH_TOKEN` set, *"Rate limit hit on authenticated GitHub request — wait or use a different token."*; without `GH_TOKEN`, *"Rate limit hit on unauthenticated GitHub request (60/hr ceiling). Set `GH_TOKEN` in the environment for the 5000/hr authenticated quota."*
    - Other non-200 → fail with status code and URL.
-2. Fetch `https://raw.githubusercontent.com/<owner>/<repo>/<default_branch>/README.md` with `curl -L --max-time 30`. On 404, retry once with lowercase `readme.md` (case-sensitivity varies by repo). If both fail, emit: *"Repo has no `README.md` or `readme.md` at the default branch root. If the repo uses a different filename (e.g., `Readme.md`, `README.rst`), pass a blob URL to the file you want to wrap instead."*
+2. Fetch `https://raw.githubusercontent.com/<owner>/<repo>/<default_branch>/README.md` with `curl -L --max-time 30 ${GH_TOKEN:+-H "Authorization: Bearer $GH_TOKEN"}`. On 404, retry once with lowercase `readme.md` (case-sensitivity varies by repo). If both fail, emit: *"Repo has no `README.md` or `readme.md` at the default branch root. If the repo uses a different filename (e.g., `Readme.md`, `README.rst`), pass a blob URL to the file you want to wrap instead."*
 3. Extract fenced code blocks matching `` ```(?:python|py)\n(.*?)``` `` (DOTALL). Take the **first match whose content is not purely install/setup commands** — skip blocks whose every non-comment line begins with `pip`, `conda`, `uv add`, `poetry add`, `!pip`, or `brew` (badge / install snippets that commonly precede the real usage example). On zero matching blocks (either no `python`-tagged blocks at all, or all are install-only): fail with *"No usable `python`-tagged code block found in `<owner>/<repo>`'s `README.md` (install-only blocks skipped). Pass a blob URL to the specific file to wrap — e.g., `github.com/<owner>/<repo>/blob/<default_branch>/inference.py`."*
 4. Run `ast.parse` on the extracted snippet. On `SyntaxError`: fail — *"First `python` block in README has syntax errors: `<msg>`. Pass a blob URL instead."*
 5. **Local-import guard.** Walk the AST for `Import` / `ImportFrom` nodes and reject **relative imports only** (`from . import x`, `from .foo import y`, `from .. import z`) with *"README snippet uses a relative import, which isn't resolvable from a standalone scaffold. Pass a blob URL to the source file instead."* All absolute imports pass through. If an absolute import turns out to be local-only (no PyPI counterpart), Step 6's `uv add <name>` fails there with a clear error — late-binding but reliable, and it avoids the false-positive/negative traps of heuristic local-import detection at this step.
@@ -162,6 +165,7 @@ Branch names, tags, and 7–40-char commit SHAs all match the `[^/]+` ref class.
 
 Produce this structure in memory, consumed by all subsequent steps:
 
+<!-- skip-validate -->
 ```python
 {
     "pattern": "<UI pattern key from pipeline-tag-patterns.md>",
@@ -173,7 +177,7 @@ Produce this structure in memory, consumed by all subsequent steps:
     "license": "<SPDX or license_name>",
     "mlx_equivalent": "<mlx-community/...>" or None,
     "mflux_family": "<family key from references/mflux-families.md Part A>" or None,   # populated only by HF-card inputs with pipeline_tag in {text-to-image, image-to-image}; None otherwise
-    "siblings": ["<org>/<model>", ...],   # from Step 1's org-freshness check; [] when the org is not a priority org or no same-task siblings were found
+    "siblings": ["<org>/<model>", ...],   # from Step 1's org-freshness check (HF-card inputs) or Step 2's AST-driven check (code/notebook inputs); [] when no priority-org reference is found or the WebFetch returns nothing usable
     "source_url": "<original input URL>" or None,   # populated by GitHub URL branch only
     "source_ref": "<resolved git ref>" or None,     # populated by GitHub URL branch only
 }
@@ -181,7 +185,11 @@ Produce this structure in memory, consumed by all subsequent steps:
 
 **Absent-value convention:** scalar fields (`inference_fn`, `mlx_equivalent`, `mflux_family`, `source_url`, `source_ref`) use `None` when absent; list fields (`data_fns`, `viz_fns`, `deps`, `siblings`) use `[]`. New fields follow the same pattern. Existing `.py` / `.ipynb` / HF-card branches leave `source_url` / `source_ref` as `None` — only the GitHub URL branch populates them.
 
-**Code input (script or notebook):** AST-parse the code (`ast.parse` + walk `FunctionDef`) to extract top-level function signatures with type annotations. Classify each function as inference (calls `.predict`, `.generate`, `.forward`, `.__call__` on a model), data (reads/writes files, manipulates DataFrames), or viz (returns a matplotlib/plotly figure). Collect imports for dependency inference. **MLX resolution is not performed for code inputs** — `mlx_equivalent` stays `None` and `siblings` stays `[]` even when the snippet contains `from_pretrained("<org>/<model>")` string literals. MLX lookup fires only for HF-card URL inputs, per Step 1.
+**Code input (script or notebook):** AST-parse the code (`ast.parse` + walk `FunctionDef`) to extract top-level function signatures with type annotations. Classify each function as inference (calls `.predict`, `.generate`, `.forward`, `.__call__` on a model), data (reads/writes files, manipulates DataFrames), or viz (returns a matplotlib/plotly figure). Collect imports for dependency inference.
+
+**MLX resolution is not performed for code inputs** — `mlx_equivalent` stays `None` because there is no `pipeline_tag` for the AST walk to anchor an MLX search against. MLX lookup fires only for HF-card URL inputs, per Step 1.
+
+**Sibling extension for code/notebook inputs.** Walk `Call` nodes whose function is named `from_pretrained` (`Call.func.attr == "from_pretrained"`). For each call, inspect the first positional argument or the `pretrained_model_name_or_path=` keyword. If it's a string `Constant` matching `^([\w-]+)/([\w.-]+)$`, capture `<org>/<model>`. For each captured `<org>` in the priority list (`mlx-community`, `google`, `ibm-granite`, `black-forest-labs`), perform the org-freshness `WebFetch` exactly as Step 1 does for HF-card inputs (same prompt, same filtering rules), with one relaxation: code inputs lack a `pipeline_tag`, so the filter applies on org and dedup-against-input only — no `pipeline_tag` filter. Store as `siblings` in the IR.
 
 **`mflux_family` population:** only HF model card inputs with `pipeline_tag ∈ {text-to-image, image-to-image}` can produce a non-`None` value; every other input type (`.py`, `.ipynb`, GitHub URL) and every other `pipeline_tag` leaves `mflux_family = None`. As with `mlx_equivalent`, the skill does not infer `mflux_family` from string literals in a code/notebook input.
 
@@ -240,6 +248,10 @@ Fetched for every run — Streamlit is the output framework regardless of input 
 
 If any fetched page shows an API that differs from the template in this file, prefer the fetched docs. Update the template accordingly before generating the app. When a page is unreachable, proceed with the templates here and note in the final report: "live verification skipped for <URL>".
 
+### Maintain a fetched-URLs list
+
+As you fetch each URL above, record it. In Step 8 the report enumerates this list and verifies it against the **Verification list** sections in `references/streamlit-docs-index.md` and `references/huggingface-docs-index.md`. If any required URL is missing at Step 8, return here and fetch it before reporting the scaffold complete.
+
 ## Step 5: Scaffold files
 
 Create the following directory tree (substitute `<app-name>` / `<app_name>`):
@@ -284,7 +296,6 @@ Create the following directory tree (substitute `<app-name>` / `<app_name>`):
 ```python
 """Streamlit entrypoint. Registers pages with st.navigation."""
 import streamlit as st
-
 from <app_name>.pages import home
 
 
@@ -386,65 +397,14 @@ HF_TOKEN=
 
 ### `src/<app_name>/inference.py` (with platform dispatch)
 
-When the source is a model-based artifact, `inference.py` loads the model and wraps calls. It dispatches between MLX and transformers by reading `config.IS_APPLE_SILICON`. The template below is for `text-generation`; other pipeline tags use the equivalent library calls (see `references/pipeline-tag-patterns.md` for signatures).
-
-```python
-"""Model loading and inference. Dispatches MLX <-> transformers by platform."""
-from functools import lru_cache
-from typing import Any
-
-from <app_name> import config
-
-# MLX model ID chosen at scaffold time (highest downloads under mlx-community).
-# Override by setting MLX_MODEL_ID in .env.
-MLX_MODEL_ID_DEFAULT: str | None = "<mlx-community/...>"  # set when Step 1 found a match; else None
-
-
-@lru_cache(maxsize=1)
-def load_model() -> Any:
-    """Lazy-load the model once per process."""
-    if config.IS_APPLE_SILICON and MLX_MODEL_ID_DEFAULT:
-        return _load_mlx()
-    return _load_transformers()
-
-
-def _load_mlx():
-    from mlx_lm import load
-
-    import os as _os
-    mlx_id = _os.getenv("MLX_MODEL_ID", MLX_MODEL_ID_DEFAULT)
-    model, tokenizer = load(mlx_id)
-    return ("mlx", model, tokenizer)
-
-
-def _load_transformers():
-    from transformers import AutoModelForCausalLM, AutoTokenizer
-
-    tokenizer = AutoTokenizer.from_pretrained(
-        config.MODEL_ID, revision=config.MODEL_REVISION, token=config.HF_TOKEN
-    )
-    model = AutoModelForCausalLM.from_pretrained(
-        config.MODEL_ID, revision=config.MODEL_REVISION, token=config.HF_TOKEN
-    )
-    return ("transformers", model, tokenizer)
-
-
-def generate_response(prompt: str, max_new_tokens: int | None = None) -> str:
-    backend, model, tokenizer = load_model()
-    max_tokens = max_new_tokens or config.MAX_NEW_TOKENS
-    if backend == "mlx":
-        from mlx_lm import generate
-        return generate(model, tokenizer, prompt=prompt, max_tokens=max_tokens)
-    inputs = tokenizer(prompt, return_tensors="pt")
-    out = model.generate(**inputs, max_new_tokens=max_tokens)
-    return tokenizer.decode(out[0], skip_special_tokens=True)
-```
+When the source is a model-based artifact, `inference.py` loads the model and wraps calls. It dispatches between MLX and transformers by reading `config.IS_APPLE_SILICON`. Use the **Variant: text-generation** template from `references/scaffolding-templates.md`. Substitute `<app_name>` and `<mlx-community/...>` (or `None` if no MLX equivalent was found in Step 1).
 
 For non-text-generation pipelines, each variant still dispatches via `config.IS_APPLE_SILICON` and exposes a function named per the page template (`transcribe`, `synthesize`, `transform_audio`, `caption`, `classify`, etc.). Backend call shapes:
 
 | Pipeline | MLX branch | Fallback branch |
 |---|---|---|
-| `image-to-text`, `image-text-to-text` | `from mlx_vlm import load, generate` → `generate(model, processor, formatted_prompt, image)` | `pipeline("image-to-text", model=config.MODEL_ID)` |
+| `image-to-text` (function name `caption(image)`) | `from mlx_vlm import load, generate` → `generate(model, processor, formatted_prompt, image)` | `pipeline("image-to-text", model=config.MODEL_ID)` |
+| `image-text-to-text` (function name `answer_about_image(image, question)`) | `from mlx_vlm import load, generate` → `generate(model, processor, formatted_prompt, image)` (chat template applied to question) | `pipeline("image-text-to-text", model=config.MODEL_ID)` |
 | `automatic-speech-recognition` | `from mlx_audio.stt.utils import load` → `load(id).generate(audio).text` | `pipeline("automatic-speech-recognition", model=config.MODEL_ID)` |
 | `text-to-speech` | `from mlx_audio.tts.utils import load_model`; iterate `load_model(id).generate(text=..., voice=...)` and concatenate each result's `.audio` | `pipeline("text-to-speech", model=config.MODEL_ID)` |
 | `audio-to-audio` | `mlx_audio.sts.<ModelClass>.from_pretrained(id)` + model-specific method (e.g. `.enhance(audio)`, `.separate_long(...)`). **Apple-Silicon-only.** | — (`RuntimeError` on non-Apple-Silicon hosts) |
@@ -455,233 +415,20 @@ For `audio-to-audio`, the exact `mlx_audio.sts` class and method depend on the m
 
 #### `text-to-image` / `image-to-image` templates (mflux)
 
-Two template variants for the mflux pipelines, selected by the matched family's `Apple-Silicon-only?` flag in `references/mflux-families.md` Part A.
+Templates live in `references/scaffolding-templates.md`. Selection at scaffold time depends on `pipeline_tag` and `mflux_family`:
 
-**Variant A — family with diffusers fallback** (currently: `flux` only). Parallel to the `mlx-lm` / transformers template above:
+| `pipeline_tag` | `mflux_family` | Template |
+|---|---|---|
+| `text-to-image` | `flux` | Variant A: text-to-image |
+| `image-to-image` | `flux` | Variant A: image-to-image |
+| `text-to-image` | `flux2`, `qwen_image`, `fibo`, `z_image` | Variant B: text-to-image |
+| `image-to-image` | `flux2` | Variant B: image-to-image — `flux2` |
+| `image-to-image` | `qwen_image` | Variant B: image-to-image — `qwen_image` |
+| `image-to-image` | `fibo` | Variant B: image-to-image — `fibo` |
+| `image-to-image` | `z_image` | **Reject at Step 1** — `z_image` has no i2i variant. |
+| `text-to-image` or `image-to-image` | `None` | Variant: diffusers-only fallback |
 
-```python
-"""Image inference. Dispatches mflux <-> diffusers by platform."""
-from functools import lru_cache
-from typing import Any
-
-from PIL import Image
-
-from <app_name> import config
-
-
-@lru_cache(maxsize=1)
-def load_model() -> Any:
-    if config.IS_APPLE_SILICON:
-        return _load_mflux()
-    return _load_diffusers()
-
-
-def _load_mflux():
-    # <inlined verbatim from mflux-families.md Part B — imports + instantiation>
-    from mflux.models.common.config import ModelConfig
-    from mflux.models.flux.variants.txt2img.flux import Flux1
-
-    model = Flux1(model_config=ModelConfig.schnell())
-    return ("mflux", model)
-
-
-def _load_diffusers():
-    import torch
-    from diffusers import FluxPipeline  # swap to FluxImg2ImgPipeline for the i2i template
-
-    device = (
-        config.DEVICE
-        if config.DEVICE != "auto"
-        else ("cuda" if torch.cuda.is_available() else "cpu")
-    )
-    pipe = FluxPipeline.from_pretrained(
-        config.MODEL_ID, revision=config.MODEL_REVISION,
-        torch_dtype=torch.bfloat16, token=config.HF_TOKEN,
-    ).to(device)
-    return ("diffusers", pipe)
-
-
-def generate_image(prompt, width, height, num_inference_steps, seed) -> Image.Image:
-    backend, model = load_model()
-    if backend == "mflux":
-        # <match this call's kwargs to the Part B snippet — e.g., add guidance=4.0 for flux, guidance=3.5 for fibo i2i>
-        return model.generate_image(
-            seed=seed, prompt=prompt, width=width, height=height,
-            num_inference_steps=num_inference_steps,
-        ).image
-    import torch
-    return model(
-        prompt=prompt, width=width, height=height,
-        num_inference_steps=num_inference_steps,
-        generator=torch.Generator(device="cpu").manual_seed(seed),
-    ).images[0]
-```
-
-**Variant A `image-to-image` template (`flux` family only):**
-
-```python
-"""Image-to-image inference. Dispatches mflux <-> diffusers by platform."""
-from functools import lru_cache
-from typing import Any
-
-from PIL import Image
-
-from <app_name> import config
-
-
-# mflux's Flux1Kontext.generate_image returns a GeneratedImage wrapper; call .image to get the PIL.Image.
-@lru_cache(maxsize=1)
-def load_model() -> Any:
-    if config.IS_APPLE_SILICON:
-        return _load_mflux()
-    return _load_diffusers()
-
-
-def _load_mflux():
-    # <inlined verbatim from mflux-families.md Part B, flux i2i subsection>
-    from mflux.models.common.config import ModelConfig
-    from mflux.models.flux.variants.kontext.flux_kontext import Flux1Kontext
-
-    model = Flux1Kontext(model_config=ModelConfig.dev_kontext())
-    return ("mflux", model)
-
-
-def _load_diffusers():
-    import torch
-    from diffusers import FluxImg2ImgPipeline
-
-    device = (
-        config.DEVICE
-        if config.DEVICE != "auto"
-        else ("cuda" if torch.cuda.is_available() else "cpu")
-    )
-    pipe = FluxImg2ImgPipeline.from_pretrained(
-        config.MODEL_ID, revision=config.MODEL_REVISION,
-        torch_dtype=torch.bfloat16, token=config.HF_TOKEN,
-    ).to(device)
-    return ("diffusers", pipe)
-
-
-def edit_image(prompt, image_paths, num_inference_steps, seed) -> Image.Image:
-    backend, model = load_model()
-    if backend == "mflux":
-        # <match this call's kwargs to the Part B snippet — Flux1Kontext takes image_path (singular), guidance=4.0>
-        return model.generate_image(
-            seed=seed, prompt=prompt,
-            num_inference_steps=num_inference_steps,
-            image_path=image_paths[0],
-        ).image
-    import torch
-    reference = Image.open(image_paths[0])
-    return model(
-        prompt=prompt, image=reference,
-        num_inference_steps=num_inference_steps,
-        generator=torch.Generator(device="cpu").manual_seed(seed),
-    ).images[0]
-```
-
-**Variant B — Apple-Silicon-only family** (every family flagged Apple-Silicon-only in `references/mflux-families.md` Part A). Same shape as the existing `audio-to-audio` template — fail fast at `load_model()`:
-
-```python
-"""Image inference. Apple-Silicon-only (no diffusers fallback for this family)."""
-from functools import lru_cache
-from typing import Any
-
-from PIL import Image
-
-from <app_name> import config
-
-
-# mflux's generate_image returns a GeneratedImage wrapper; call .image to get the PIL.Image.
-@lru_cache(maxsize=1)
-def load_model() -> Any:
-    if not config.IS_APPLE_SILICON:
-        raise RuntimeError(
-            "This app requires Apple Silicon. The <family> family has no "
-            "diffusers fallback. Run on a Mac with Apple Silicon, or "
-            "re-scaffold from an HF model card whose family has a diffusers "
-            "fallback (e.g., black-forest-labs/FLUX.1-schnell)."
-        )
-    # <inlined verbatim from mflux-families.md Part B>
-    from mflux.models.common.config import ModelConfig
-    from mflux.models.flux2.variants import Flux2Klein
-
-    model = Flux2Klein(model_config=ModelConfig.flux2_klein_9b())
-    return ("mflux", model)
-
-
-def generate_image(prompt, width, height, num_inference_steps, seed) -> Image.Image:
-    _, model = load_model()
-    # <match this call's kwargs to the Part B snippet — e.g., add guidance=4.0 for flux, guidance=3.5 for fibo i2i>
-    return model.generate_image(
-        seed=seed, prompt=prompt, width=width, height=height,
-        num_inference_steps=num_inference_steps,
-    ).image
-```
-
-**Variant B `image-to-image` template (Apple-Silicon-only families with an edit variant):**
-
-Emit this variant only when the matched family has an image-to-image class in `mflux-families.md` Part B — `flux2`, `qwen_image`, `fibo`. `z_image` has no i2i variant; omit the image-to-image page entirely for `z_image` inputs with `pipeline_tag=image-to-image` (the skill rejects this at scaffold time with a clear error instead of generating a broken edit page).
-
-```python
-"""Image-to-image inference. Apple-Silicon-only (no diffusers fallback for this family)."""
-from functools import lru_cache
-from typing import Any
-
-from PIL import Image
-
-from <app_name> import config
-
-
-# mflux's generate_image returns a GeneratedImage wrapper; call .image to get the PIL.Image.
-@lru_cache(maxsize=1)
-def load_model() -> Any:
-    if not config.IS_APPLE_SILICON:
-        raise RuntimeError(
-            "This app requires Apple Silicon. The <family> family has no "
-            "diffusers fallback. Run on a Mac with Apple Silicon, or "
-            "pick a model family with a generic diffusers backend "
-            "(e.g., any black-forest-labs/FLUX.1-* model)."
-        )
-    # <inlined verbatim from mflux-families.md Part B, family's i2i subsection>
-    from mflux.models.common.config import ModelConfig
-    from mflux.models.flux2.variants import Flux2KleinEdit
-
-    model = Flux2KleinEdit(model_config=ModelConfig.flux2_klein_9b())
-    return ("mflux", model)
-
-
-def edit_image(prompt, image_paths, num_inference_steps, seed) -> Image.Image:
-    _, model = load_model()
-    # REPLACE the body below with the matched family's call (call shapes differ — DO NOT inline verbatim):
-    #
-    #   flux2:       return model.generate_image(
-    #                    seed=seed, prompt=prompt,
-    #                    image_paths=image_paths,
-    #                    num_inference_steps=num_inference_steps,
-    #                ).image
-    #
-    #   qwen_image:  return model.generate_image(
-    #                    seed=seed, prompt=prompt,
-    #                    image_paths=image_paths,
-    #                    num_inference_steps=num_inference_steps,
-    #                    guidance=2.5,
-    #                ).image
-    #
-    #   fibo:        return model.generate_image(
-    #                    seed=seed, prompt=prompt,
-    #                    image_path=image_paths[0],   # NOTE singular — fibo takes a single path, not a list
-    #                    num_inference_steps=num_inference_steps,
-    #                    guidance=3.5,
-    #                ).image
-    raise NotImplementedError(
-        "Replace this body with the per-family edit_image call from the comment above."
-    )
-```
-
-**Fallback-only path (`mflux_family = None`):** emit a diffusers-only template — no mflux import, no `IS_APPLE_SILICON` check, no platform dispatch. The scaffold produces a working app that uses `diffusers` on all platforms. Apply standard `_require("MODEL_ID")` / optional `HF_TOKEN` rules as today.
-
-Substitute `<family>`, the mflux class, and the `ModelConfig` constructor from the matched `references/mflux-families.md` Part B block at scaffold time. Do not leave `<...>` placeholders in the generated app.
+For each Variant A and Variant B `inference.py` template, inline the matched family's Part B snippet from `references/mflux-families.md` (imports + instantiation + per-call kwargs) verbatim into the marked locations. Do not leave `<...>` placeholders in the generated app.
 
 ### `src/<app_name>/data.py` and `viz.py`
 
@@ -705,57 +452,13 @@ When the source has multiple independent flows, generate one page module per flo
 
 ### `tests/conftest.py`
 
-Sets required env vars before any test imports the package. Provides a mocked-model fixture so inference tests do not touch the network.
-
-```python
-"""Test fixtures. Set required env vars before package import."""
-import os
-
-os.environ.setdefault("MODEL_ID", "test-model")
-# os.environ.setdefault("HF_TOKEN", "test-token")  # enable for gated models
-
-import pytest
-
-
-class _StubModel:
-    """Minimal interface used by inference.py."""
-    def generate(self, *args, **kwargs):
-        return [[0, 1, 2]]
-
-    def predict(self, x):
-        return [0] * len(x)
-
-
-@pytest.fixture
-def mock_model(monkeypatch):
-    from <app_name> import inference
-    monkeypatch.setattr(inference, "load_model", lambda: ("stub", _StubModel(), None))
-    return _StubModel()
-
-
-class _StubMfluxModel:
-    """Minimal interface used by mflux-backed inference.py templates."""
-    def generate_image(self, *args, **kwargs):
-        from PIL import Image
-
-        class _StubGenerated:
-            image = Image.new("RGB", (64, 64))
-        return _StubGenerated()
-
-
-@pytest.fixture
-def mock_mflux_model(monkeypatch):
-    from <app_name> import inference
-    monkeypatch.setattr(inference, "load_model", lambda: ("mflux", _StubMfluxModel()))
-    return _StubMfluxModel()
-```
+Use the **Test fixtures** template from `references/scaffolding-templates.md`. Substitute `<app_name>` throughout. Sets required env vars before any test imports the package and provides mocked-model fixtures so inference tests do not touch the network.
 
 ### `tests/test_config.py`
 
 ```python
 """Tests for src/<app_name>/config.py."""
 import importlib
-import os
 
 import pytest
 
@@ -806,11 +509,9 @@ def test_generate_response_uses_loaded_model(mock_model):
 
 ```python
 """Tests for src/<app_name>/inference.py — mflux image pipelines."""
-from PIL import Image
-
 import pytest
-
 from <app_name> import inference
+from PIL import Image
 
 
 # text-to-image — emit for every text-to-image scaffold
@@ -995,12 +696,31 @@ When `source_ref` is None, omit the `(ref: …)` parenthetical. When `source_url
 Surface:
 
 1. **Files created**, grouped by purpose: app code, config, tests, project files.
-2. **Chosen model variant** — if MLX resolution returned a match, show `mlx-community/<variant>` alongside the original `<org>/<model>`; otherwise note "no MLX equivalent found, app uses transformers on all platforms."
-
-   **Sibling models (conditional)** — when Step 2's `siblings` list is non-empty, append:
+2. **Live docs verified.** List the URLs fetched from each index, e.g.:
 
    ```
+   Streamlit docs (8 fetched, all required):
+     - https://docs.streamlit.io/develop/concepts/multipage-apps/overview
+     - ...
+   HuggingFace docs (3 fetched, all required):
+     - ...
+   ```
+
+   Cross-check against the **Verification list** sections in `references/streamlit-docs-index.md` and `references/huggingface-docs-index.md`. If any "Always" URL is missing, or any conditional URL whose trigger applies was skipped, return to Step 4 — do not report the scaffold as complete.
+3. **Chosen model variant** — if MLX resolution returned a match, show `mlx-community/<variant>` alongside the original `<org>/<model>`; otherwise note "no MLX equivalent found, app uses transformers on all platforms."
+
+   **Sibling models (conditional)** — when Step 2's `siblings` list is non-empty, append. Wording depends on input type: HF-card inputs benefit from a `pipeline_tag`-filtered list ("for this task"); code/notebook inputs cannot verify the pipeline tag of siblings and surface them with a softer caveat.
+
+   For HF-card inputs:
+   ```
    Other <org> models for this task (consider if you want something newer/different):
+     - <org>/<sibling1>
+     - <org>/<sibling2>
+   ```
+
+   For code/notebook inputs:
+   ```
+   Other models from <org> (pipeline_tag not verified, may differ from input):
      - <org>/<sibling1>
      - <org>/<sibling2>
    ```
@@ -1014,14 +734,14 @@ Surface:
    ```
 
    When the input is an HF model card with `pipeline_tag ∈ {text-to-image, image-to-image}` and `mflux_family = None`, emit instead: *"No mflux family matched — app will use diffusers on all platforms."* (Script / notebook / GitHub URL inputs skip both mflux-related lines because `pipeline_tag` is not in the IR for those input types.)
-3. **Apple-Silicon-only warning (when applicable)** — emit one of the two messages below depending on the trigger:
+4. **Apple-Silicon-only warning (when applicable)** — emit one of the two messages below depending on the trigger:
    - If the classified pipeline is `audio-to-audio`: *"This scaffold requires Apple Silicon at runtime. On non-Apple-Silicon hosts (including Intel Macs), `uv sync` will not install `mlx-audio` and the app will error at model load."*
    - If `mflux_family` is an Apple-Silicon-only family (per `references/mflux-families.md` Part A): *"This scaffold requires Apple Silicon at runtime. On non-Apple-Silicon hosts (including Intel Macs), `uv sync` will not install `mflux` and the app will error at model load."*
 
    **Install-size note (when `mflux_family` is non-`None`):** `uv sync` on Apple Silicon installs ~2–3 GB of model-inference dependencies (mflux pulls `torch`, `opencv-python`, `sentencepiece`, etc.); first run may take several minutes. Silent otherwise.
-4. **License + commercial-use flag** — from `references/license-flags.md`, if the model's license matches a flagged entry. Quote the flag text inline.
-5. **Gated-model setup** — when `is_gated` is `true` in the IR (only HF-card inputs set this today; script / notebook / GitHub inputs leave it `false`), show the `huggingface-cli login` command and the alternative `HF_TOKEN` path.
-6. **Exact local-run command:**
+5. **License + commercial-use flag** — from `references/license-flags.md`, if the model's license matches a flagged entry. Quote the flag text inline.
+6. **Gated-model setup** — when `is_gated` is `true` in the IR (only HF-card inputs set this today; script / notebook / GitHub inputs leave it `false`), show the `huggingface-cli login` command and the alternative `HF_TOKEN` path.
+7. **Exact local-run command:**
 
    ```bash
    uv sync
@@ -1029,7 +749,7 @@ Surface:
    streamlit run streamlit_app.py
    ```
 
-7. **Non-goals reminder** — a short list of things the scaffold does NOT include (auth, Docker, CI, DB, observability), explicitly marked as the team's responsibility.
+8. **Non-goals reminder** — a short list of things the scaffold does NOT include (auth, Docker, CI, DB, observability), explicitly marked as the team's responsibility.
 
 ## Output checklist
 
