@@ -709,10 +709,18 @@ Surface:
    Cross-check against the **Verification list** sections in `references/streamlit-docs-index.md` and `references/huggingface-docs-index.md`. If any "Always" URL is missing, or any conditional URL whose trigger applies was skipped, return to Step 4 — do not report the scaffold as complete.
 3. **Chosen model variant** — if MLX resolution returned a match, show `mlx-community/<variant>` alongside the original `<org>/<model>`; otherwise note "no MLX equivalent found, app uses transformers on all platforms."
 
-   **Sibling models (conditional)** — when Step 2's `siblings` list is non-empty, append:
+   **Sibling models (conditional)** — when Step 2's `siblings` list is non-empty, append. Wording depends on input type: HF-card inputs benefit from a `pipeline_tag`-filtered list ("for this task"); code/notebook inputs cannot verify the pipeline tag of siblings and surface them with a softer caveat.
 
+   For HF-card inputs:
    ```
    Other <org> models for this task (consider if you want something newer/different):
+     - <org>/<sibling1>
+     - <org>/<sibling2>
+   ```
+
+   For code/notebook inputs:
+   ```
+   Other models from <org> (pipeline_tag not verified, may differ from input):
      - <org>/<sibling1>
      - <org>/<sibling2>
    ```
