@@ -35,3 +35,19 @@ Fetch a row when its trigger matches the input.
 - `sentence-transformers` docs live at `sbert.net` (off-domain).
 - `mlx-*` library docs live on GitHub (`ml-explore/mlx`, off-domain).
 - Both are intentionally excluded to keep this index within `huggingface.co/docs`. The skill declares the relevant PyPI deps in Step 6 without needing doc references here.
+
+## Verification list (Step 4 → Step 8 enforcement)
+
+In the Step 8 report, list every URL fetched from this index. The skill must fetch every applicable "Always" URL (HF docs are baseline-fetched only when the generated code uses `huggingface_hub` / `transformers` / `diffusers`) and every conditional URL whose trigger applies.
+
+**Always (when input is HF-card OR code-input imports `huggingface_hub` / `transformers` / `diffusers`):**
+- https://huggingface.co/docs/hub/en/security-tokens
+- https://huggingface.co/docs/huggingface_hub/en/guides/cli
+
+**Conditional (fetch when trigger matches):**
+- trigger: `library_name == "transformers"` OR `transformers` imported → https://huggingface.co/docs/transformers/en/main_classes/pipelines
+- trigger: `library_name == "transformers"` OR `transformers` imported → https://huggingface.co/docs/transformers/en/model_doc/auto
+- trigger: `library_name == "transformers"` AND `pipeline_tag == "automatic-speech-recognition"` → https://huggingface.co/docs/transformers/en/tasks/asr
+- trigger: `library_name == "transformers"` AND `pipeline_tag == "text-to-speech"` → https://huggingface.co/docs/transformers/en/tasks/text-to-speech
+- trigger: `library_name == "diffusers"` OR `diffusers` imported → https://huggingface.co/docs/diffusers/en/using-diffusers/loading
+- trigger: `library_name == "diffusers"` OR `diffusers` imported → https://huggingface.co/docs/diffusers/en/quicktour
