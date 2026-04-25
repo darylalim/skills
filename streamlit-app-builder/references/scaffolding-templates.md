@@ -268,7 +268,7 @@ def generate_image(prompt, width, height, num_inference_steps, seed) -> Image.Im
 **Body:**
 
 ```python
-"""Image-to-image inference. Apple-Silicon-only (no diffusers fallback for flux2)."""
+"""Image-to-image inference. Apple-Silicon-only (flux2, no fallback)."""
 from functools import lru_cache
 from typing import Any
 
@@ -310,7 +310,7 @@ def edit_image(prompt, image_paths, num_inference_steps, seed) -> Image.Image:
 **Body:**
 
 ```python
-"""Image-to-image inference. Apple-Silicon-only (no diffusers fallback for qwen_image)."""
+"""Image-to-image inference. Apple-Silicon-only (qwen_image, no fallback)."""
 from functools import lru_cache
 from typing import Any
 
@@ -355,7 +355,7 @@ def edit_image(prompt, image_paths, num_inference_steps, seed) -> Image.Image:
 **Body:**
 
 ```python
-"""Image-to-image inference. Apple-Silicon-only (no diffusers fallback for fibo)."""
+"""Image-to-image inference. Apple-Silicon-only (fibo, no fallback)."""
 from functools import lru_cache
 from typing import Any
 
