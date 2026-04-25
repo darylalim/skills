@@ -214,7 +214,50 @@ def edit_image(prompt, image_paths, num_inference_steps, seed) -> Image.Image:
 
 Used for `pipeline_tag = text-to-image` with `mflux_family ∈ {flux2, qwen_image, fibo, z_image}`.
 
-(body added in Task 11)
+**Files produced:** `src/<app_name>/inference.py`
+
+**Placeholder substitutions:**
+- `<app_name>` → app's importable name
+- `<family>` → matched `mflux_family` (used in the RuntimeError message)
+- The `_load_mflux()` body's imports + instantiation are inlined from `references/mflux-families.md` Part B for the matched family. The example below uses `flux2`; substitute the per-family lines from Part B.
+
+**Body:**
+
+```python
+"""Image inference. Apple-Silicon-only (no diffusers fallback for this family)."""
+from functools import lru_cache
+from typing import Any
+
+from <app_name> import config
+from PIL import Image
+
+
+# generate_image returns a GeneratedImage wrapper; call .image for PIL.Image.
+@lru_cache(maxsize=1)
+def load_model() -> Any:
+    if not config.IS_APPLE_SILICON:
+        raise RuntimeError(
+            "This app requires Apple Silicon. The <family> family has no "
+            "diffusers fallback. Run on a Mac with Apple Silicon, or "
+            "re-scaffold from an HF model card whose family has a diffusers "
+            "fallback (e.g., black-forest-labs/FLUX.1-schnell)."
+        )
+    # <inlined verbatim from mflux-families.md Part B>
+    from mflux.models.common.config import ModelConfig
+    from mflux.models.flux2.variants import Flux2Klein
+
+    model = Flux2Klein(model_config=ModelConfig.flux2_klein_9b())
+    return ("mflux", model)
+
+
+def generate_image(prompt, width, height, num_inference_steps, seed) -> Image.Image:
+    _, model = load_model()
+    # Match kwargs to the Part B snippet (e.g. guidance=4.0 for flux).
+    return model.generate_image(
+        seed=seed, prompt=prompt, width=width, height=height,
+        num_inference_steps=num_inference_steps,
+    ).image
+```
 
 ## Variant B: image-to-image `inference.py` — `flux2`
 
