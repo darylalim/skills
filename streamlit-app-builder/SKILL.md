@@ -92,6 +92,7 @@ curl -L -o notebook.ipynb "<resolved_raw_url>"
 
 ```python
 import json
+
 with open("notebook.ipynb") as f:
     nb = json.load(f)
 code_cells = [
@@ -162,6 +163,7 @@ Branch names, tags, and 7–40-char commit SHAs all match the `[^/]+` ref class.
 
 Produce this structure in memory, consumed by all subsequent steps:
 
+<!-- skip-validate -->
 ```python
 {
     "pattern": "<UI pattern key from pipeline-tag-patterns.md>",
@@ -284,7 +286,6 @@ Create the following directory tree (substitute `<app-name>` / `<app_name>`):
 ```python
 """Streamlit entrypoint. Registers pages with st.navigation."""
 import streamlit as st
-
 from <app_name>.pages import home
 
 
@@ -397,7 +398,7 @@ from <app_name> import config
 
 # MLX model ID chosen at scaffold time (highest downloads under mlx-community).
 # Override by setting MLX_MODEL_ID in .env.
-MLX_MODEL_ID_DEFAULT: str | None = "<mlx-community/...>"  # set when Step 1 found a match; else None
+MLX_MODEL_ID_DEFAULT: str | None = "<mlx-community/...>"
 
 
 @lru_cache(maxsize=1)
@@ -409,9 +410,10 @@ def load_model() -> Any:
 
 
 def _load_mlx():
+    import os as _os
+
     from mlx_lm import load
 
-    import os as _os
     mlx_id = _os.getenv("MLX_MODEL_ID", MLX_MODEL_ID_DEFAULT)
     model, tokenizer = load(mlx_id)
     return ("mlx", model, tokenizer)
@@ -464,9 +466,8 @@ Two template variants for the mflux pipelines, selected by the matched family's 
 from functools import lru_cache
 from typing import Any
 
-from PIL import Image
-
 from <app_name> import config
+from PIL import Image
 
 
 @lru_cache(maxsize=1)
@@ -486,8 +487,9 @@ def _load_mflux():
 
 
 def _load_diffusers():
+    # swap FluxPipeline to FluxImg2ImgPipeline for the i2i template
     import torch
-    from diffusers import FluxPipeline  # swap to FluxImg2ImgPipeline for the i2i template
+    from diffusers import FluxPipeline
 
     device = (
         config.DEVICE
@@ -504,7 +506,7 @@ def _load_diffusers():
 def generate_image(prompt, width, height, num_inference_steps, seed) -> Image.Image:
     backend, model = load_model()
     if backend == "mflux":
-        # <match this call's kwargs to the Part B snippet — e.g., add guidance=4.0 for flux, guidance=3.5 for fibo i2i>
+        # Match kwargs to the Part B snippet (e.g. guidance=4.0 for flux).
         return model.generate_image(
             seed=seed, prompt=prompt, width=width, height=height,
             num_inference_steps=num_inference_steps,
@@ -524,12 +526,11 @@ def generate_image(prompt, width, height, num_inference_steps, seed) -> Image.Im
 from functools import lru_cache
 from typing import Any
 
+from <app_name> import config
 from PIL import Image
 
-from <app_name> import config
 
-
-# mflux's Flux1Kontext.generate_image returns a GeneratedImage wrapper; call .image to get the PIL.Image.
+# Flux1Kontext.generate_image returns a GeneratedImage wrapper; call .image.
 @lru_cache(maxsize=1)
 def load_model() -> Any:
     if config.IS_APPLE_SILICON:
@@ -565,7 +566,7 @@ def _load_diffusers():
 def edit_image(prompt, image_paths, num_inference_steps, seed) -> Image.Image:
     backend, model = load_model()
     if backend == "mflux":
-        # <match this call's kwargs to the Part B snippet — Flux1Kontext takes image_path (singular), guidance=4.0>
+        # Flux1Kontext takes image_path (singular) and guidance=4.0.
         return model.generate_image(
             seed=seed, prompt=prompt,
             num_inference_steps=num_inference_steps,
@@ -587,12 +588,11 @@ def edit_image(prompt, image_paths, num_inference_steps, seed) -> Image.Image:
 from functools import lru_cache
 from typing import Any
 
+from <app_name> import config
 from PIL import Image
 
-from <app_name> import config
 
-
-# mflux's generate_image returns a GeneratedImage wrapper; call .image to get the PIL.Image.
+# generate_image returns a GeneratedImage wrapper; call .image for PIL.Image.
 @lru_cache(maxsize=1)
 def load_model() -> Any:
     if not config.IS_APPLE_SILICON:
@@ -612,7 +612,7 @@ def load_model() -> Any:
 
 def generate_image(prompt, width, height, num_inference_steps, seed) -> Image.Image:
     _, model = load_model()
-    # <match this call's kwargs to the Part B snippet — e.g., add guidance=4.0 for flux, guidance=3.5 for fibo i2i>
+    # Match kwargs to the Part B snippet (e.g. guidance=4.0 for flux).
     return model.generate_image(
         seed=seed, prompt=prompt, width=width, height=height,
         num_inference_steps=num_inference_steps,
@@ -624,16 +624,15 @@ def generate_image(prompt, width, height, num_inference_steps, seed) -> Image.Im
 Emit this variant only when the matched family has an image-to-image class in `mflux-families.md` Part B — `flux2`, `qwen_image`, `fibo`. `z_image` has no i2i variant; omit the image-to-image page entirely for `z_image` inputs with `pipeline_tag=image-to-image` (the skill rejects this at scaffold time with a clear error instead of generating a broken edit page).
 
 ```python
-"""Image-to-image inference. Apple-Silicon-only (no diffusers fallback for this family)."""
+"""Image-to-image inference. Apple-Silicon-only (no diffusers fallback)."""
 from functools import lru_cache
 from typing import Any
 
+from <app_name> import config
 from PIL import Image
 
-from <app_name> import config
 
-
-# mflux's generate_image returns a GeneratedImage wrapper; call .image to get the PIL.Image.
+# generate_image returns a GeneratedImage wrapper; call .image for PIL.Image.
 @lru_cache(maxsize=1)
 def load_model() -> Any:
     if not config.IS_APPLE_SILICON:
@@ -653,7 +652,7 @@ def load_model() -> Any:
 
 def edit_image(prompt, image_paths, num_inference_steps, seed) -> Image.Image:
     _, model = load_model()
-    # REPLACE the body below with the matched family's call (call shapes differ — DO NOT inline verbatim):
+    # REPLACE with the matched family's call — shapes differ, do not inline verbatim:
     #
     #   flux2:       return model.generate_image(
     #                    seed=seed, prompt=prompt,
@@ -670,7 +669,7 @@ def edit_image(prompt, image_paths, num_inference_steps, seed) -> Image.Image:
     #
     #   fibo:        return model.generate_image(
     #                    seed=seed, prompt=prompt,
-    #                    image_path=image_paths[0],   # NOTE singular — fibo takes a single path, not a list
+    #                    image_path=image_paths[0],  # singular: fibo takes one path
     #                    num_inference_steps=num_inference_steps,
     #                    guidance=3.5,
     #                ).image
@@ -755,7 +754,6 @@ def mock_mflux_model(monkeypatch):
 ```python
 """Tests for src/<app_name>/config.py."""
 import importlib
-import os
 
 import pytest
 
@@ -806,11 +804,9 @@ def test_generate_response_uses_loaded_model(mock_model):
 
 ```python
 """Tests for src/<app_name>/inference.py — mflux image pipelines."""
-from PIL import Image
-
 import pytest
-
 from <app_name> import inference
+from PIL import Image
 
 
 # text-to-image — emit for every text-to-image scaffold

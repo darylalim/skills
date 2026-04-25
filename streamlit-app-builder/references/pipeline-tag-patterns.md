@@ -114,7 +114,9 @@ import streamlit as st
 from <app_name>.inference import transcribe
 
 st.title("Transcribe Audio")
-audio = st.audio_input("Record") or st.file_uploader("Upload", type=["wav", "mp3", "m4a", "flac"])
+audio = st.audio_input("Record") or st.file_uploader(
+    "Upload", type=["wav", "mp3", "m4a", "flac"]
+)
 if audio and st.button("Transcribe"):
     text = transcribe(audio)
     st.text_area("Transcript", text, height=200)
@@ -202,7 +204,6 @@ Scaffold-time substitution: the `value=` arguments on the width/height/steps sli
 ```python
 """Text-to-image page."""
 import streamlit as st
-
 from <app_name> import inference
 
 
@@ -237,7 +238,6 @@ import tempfile
 from pathlib import Path
 
 import streamlit as st
-
 from <app_name> import inference
 
 
@@ -277,8 +277,8 @@ def render() -> None:
 `pipeline_tag`: missing / unrecognized / not applicable (code-based input without a clear pattern)
 
 ```python
-import streamlit as st
 import pandas as pd
+import streamlit as st
 from <app_name>.inference import run  # or equivalent entry from source
 
 st.title("Run")

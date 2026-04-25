@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import ast
 import re
+import subprocess
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -121,4 +123,32 @@ def test_block_parses_as_python(block):
         pytest.fail(
             f"{block.source_file.name}:{block.line_no} SyntaxError: {e.msg} "
             f"(line {e.lineno}, col {e.offset})"
+        )
+
+
+def _lint_block(block: CodeBlock) -> tuple[int, str]:
+    """Run ruff check on a substituted block. Returns (returncode, combined_output)."""
+    substituted = substitute_placeholders(block.content)
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".py", delete=False, encoding="utf-8"
+    ) as tf:
+        tf.write(substituted)
+        tmp_path = tf.name
+    try:
+        result = subprocess.run(
+            ["ruff", "check", "--select", "E,F,I", "--no-fix", tmp_path],
+            capture_output=True,
+            text=True,
+        )
+        return result.returncode, result.stdout + result.stderr
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+
+
+@pytest.mark.parametrize("block", _all_blocks(), ids=lambda b: f"{b.source_file.name}:{b.line_no}")
+def test_block_passes_ruff_check(block):
+    rc, output = _lint_block(block)
+    if rc != 0:
+        pytest.fail(
+            f"{block.source_file.name}:{block.line_no} ruff failures:\n{output}"
         )
