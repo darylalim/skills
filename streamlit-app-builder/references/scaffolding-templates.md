@@ -70,13 +70,17 @@ def generate_response(prompt: str, max_new_tokens: int | None = None) -> str:
     return tokenizer.decode(out[0], skip_special_tokens=True)
 
 
-def generate_response_stream(prompt: str, max_new_tokens: int | None = None) -> Iterator[str]:
+def generate_response_stream(
+    prompt: str, max_new_tokens: int | None = None
+) -> Iterator[str]:
     """Yield response chunks. Used by the chat page via st.write_stream."""
     backend, model, tokenizer = load_model()
     max_tokens = max_new_tokens or config.MAX_NEW_TOKENS
     if backend == "mlx":
         from mlx_lm import stream_generate
-        for response in stream_generate(model, tokenizer, prompt=prompt, max_tokens=max_tokens):
+        for response in stream_generate(
+            model, tokenizer, prompt=prompt, max_tokens=max_tokens
+        ):
             yield response.text
         return
     from threading import Thread
