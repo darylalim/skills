@@ -195,6 +195,24 @@ if img and st.button("Caption"):
     st.write(caption(img))
 ```
 
+## Image-text-to-text (visual question answering, multimodal chat)
+
+`pipeline_tag`: `image-text-to-text`
+
+```python
+import streamlit as st
+from <app_name>.inference import answer_about_image
+
+st.title("Image + Text")
+img = st.file_uploader("Upload", type=["png", "jpg", "jpeg", "webp"])
+question = st.text_area("Question about the image", height=100)
+if st.button("Answer", disabled=not (img and question.strip())):
+    st.image(img)
+    st.write(answer_about_image(image=img, question=question))
+```
+
+Inference function signature: `answer_about_image(image, question: str) -> str`. MLX backend: `mlx_vlm.generate(model, processor, formatted_prompt, image)` with the chat template applied to `question`. Fallback: `pipeline("image-text-to-text", model=config.MODEL_ID)` with both image and question kwargs.
+
 ## Text to image
 
 `pipeline_tag`: `text-to-image`

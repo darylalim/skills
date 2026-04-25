@@ -393,7 +393,8 @@ For non-text-generation pipelines, each variant still dispatches via `config.IS_
 
 | Pipeline | MLX branch | Fallback branch |
 |---|---|---|
-| `image-to-text`, `image-text-to-text` | `from mlx_vlm import load, generate` → `generate(model, processor, formatted_prompt, image)` | `pipeline("image-to-text", model=config.MODEL_ID)` |
+| `image-to-text` (function name `caption(image)`) | `from mlx_vlm import load, generate` → `generate(model, processor, formatted_prompt, image)` | `pipeline("image-to-text", model=config.MODEL_ID)` |
+| `image-text-to-text` (function name `answer_about_image(image, question)`) | `from mlx_vlm import load, generate` → `generate(model, processor, formatted_prompt, image)` (chat template applied to question) | `pipeline("image-text-to-text", model=config.MODEL_ID)` |
 | `automatic-speech-recognition` | `from mlx_audio.stt.utils import load` → `load(id).generate(audio).text` | `pipeline("automatic-speech-recognition", model=config.MODEL_ID)` |
 | `text-to-speech` | `from mlx_audio.tts.utils import load_model`; iterate `load_model(id).generate(text=..., voice=...)` and concatenate each result's `.audio` | `pipeline("text-to-speech", model=config.MODEL_ID)` |
 | `audio-to-audio` | `mlx_audio.sts.<ModelClass>.from_pretrained(id)` + model-specific method (e.g. `.enhance(audio)`, `.separate_long(...)`). **Apple-Silicon-only.** | — (`RuntimeError` on non-Apple-Silicon hosts) |
