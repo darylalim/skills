@@ -387,60 +387,7 @@ HF_TOKEN=
 
 ### `src/<app_name>/inference.py` (with platform dispatch)
 
-When the source is a model-based artifact, `inference.py` loads the model and wraps calls. It dispatches between MLX and transformers by reading `config.IS_APPLE_SILICON`. The template below is for `text-generation`; other pipeline tags use the equivalent library calls (see `references/pipeline-tag-patterns.md` for signatures).
-
-```python
-"""Model loading and inference. Dispatches MLX <-> transformers by platform."""
-from functools import lru_cache
-from typing import Any
-
-from <app_name> import config
-
-# MLX model ID chosen at scaffold time (highest downloads under mlx-community).
-# Override by setting MLX_MODEL_ID in .env.
-MLX_MODEL_ID_DEFAULT: str | None = "<mlx-community/...>"
-
-
-@lru_cache(maxsize=1)
-def load_model() -> Any:
-    """Lazy-load the model once per process."""
-    if config.IS_APPLE_SILICON and MLX_MODEL_ID_DEFAULT:
-        return _load_mlx()
-    return _load_transformers()
-
-
-def _load_mlx():
-    import os as _os
-
-    from mlx_lm import load
-
-    mlx_id = _os.getenv("MLX_MODEL_ID", MLX_MODEL_ID_DEFAULT)
-    model, tokenizer = load(mlx_id)
-    return ("mlx", model, tokenizer)
-
-
-def _load_transformers():
-    from transformers import AutoModelForCausalLM, AutoTokenizer
-
-    tokenizer = AutoTokenizer.from_pretrained(
-        config.MODEL_ID, revision=config.MODEL_REVISION, token=config.HF_TOKEN
-    )
-    model = AutoModelForCausalLM.from_pretrained(
-        config.MODEL_ID, revision=config.MODEL_REVISION, token=config.HF_TOKEN
-    )
-    return ("transformers", model, tokenizer)
-
-
-def generate_response(prompt: str, max_new_tokens: int | None = None) -> str:
-    backend, model, tokenizer = load_model()
-    max_tokens = max_new_tokens or config.MAX_NEW_TOKENS
-    if backend == "mlx":
-        from mlx_lm import generate
-        return generate(model, tokenizer, prompt=prompt, max_tokens=max_tokens)
-    inputs = tokenizer(prompt, return_tensors="pt")
-    out = model.generate(**inputs, max_new_tokens=max_tokens)
-    return tokenizer.decode(out[0], skip_special_tokens=True)
-```
+When the source is a model-based artifact, `inference.py` loads the model and wraps calls. It dispatches between MLX and transformers by reading `config.IS_APPLE_SILICON`. Use the **Variant: text-generation** template from `references/scaffolding-templates.md`. Substitute `<app_name>` and `<mlx-community/...>` (or `None` if no MLX equivalent was found in Step 1).
 
 For non-text-generation pipelines, each variant still dispatches via `config.IS_APPLE_SILICON` and exposes a function named per the page template (`transcribe`, `synthesize`, `transform_audio`, `caption`, `classify`, etc.). Backend call shapes:
 
@@ -457,230 +404,20 @@ For `audio-to-audio`, the exact `mlx_audio.sts` class and method depend on the m
 
 #### `text-to-image` / `image-to-image` templates (mflux)
 
-Two template variants for the mflux pipelines, selected by the matched family's `Apple-Silicon-only?` flag in `references/mflux-families.md` Part A.
+Templates live in `references/scaffolding-templates.md`. Selection at scaffold time depends on `pipeline_tag` and `mflux_family`:
 
-**Variant A — family with diffusers fallback** (currently: `flux` only). Parallel to the `mlx-lm` / transformers template above:
+| `pipeline_tag` | `mflux_family` | Template |
+|---|---|---|
+| `text-to-image` | `flux` | Variant A: text-to-image |
+| `image-to-image` | `flux` | Variant A: image-to-image |
+| `text-to-image` | `flux2`, `qwen_image`, `fibo`, `z_image` | Variant B: text-to-image |
+| `image-to-image` | `flux2` | Variant B: image-to-image — `flux2` |
+| `image-to-image` | `qwen_image` | Variant B: image-to-image — `qwen_image` |
+| `image-to-image` | `fibo` | Variant B: image-to-image — `fibo` |
+| `image-to-image` | `z_image` | **Reject at Step 1** — `z_image` has no i2i variant. |
+| `text-to-image` or `image-to-image` | `None` | Variant: diffusers-only fallback |
 
-```python
-"""Image inference. Dispatches mflux <-> diffusers by platform."""
-from functools import lru_cache
-from typing import Any
-
-from <app_name> import config
-from PIL import Image
-
-
-@lru_cache(maxsize=1)
-def load_model() -> Any:
-    if config.IS_APPLE_SILICON:
-        return _load_mflux()
-    return _load_diffusers()
-
-
-def _load_mflux():
-    # <inlined verbatim from mflux-families.md Part B — imports + instantiation>
-    from mflux.models.common.config import ModelConfig
-    from mflux.models.flux.variants.txt2img.flux import Flux1
-
-    model = Flux1(model_config=ModelConfig.schnell())
-    return ("mflux", model)
-
-
-def _load_diffusers():
-    # swap FluxPipeline to FluxImg2ImgPipeline for the i2i template
-    import torch
-    from diffusers import FluxPipeline
-
-    device = (
-        config.DEVICE
-        if config.DEVICE != "auto"
-        else ("cuda" if torch.cuda.is_available() else "cpu")
-    )
-    pipe = FluxPipeline.from_pretrained(
-        config.MODEL_ID, revision=config.MODEL_REVISION,
-        torch_dtype=torch.bfloat16, token=config.HF_TOKEN,
-    ).to(device)
-    return ("diffusers", pipe)
-
-
-def generate_image(prompt, width, height, num_inference_steps, seed) -> Image.Image:
-    backend, model = load_model()
-    if backend == "mflux":
-        # Match kwargs to the Part B snippet (e.g. guidance=4.0 for flux).
-        return model.generate_image(
-            seed=seed, prompt=prompt, width=width, height=height,
-            num_inference_steps=num_inference_steps,
-        ).image
-    import torch
-    return model(
-        prompt=prompt, width=width, height=height,
-        num_inference_steps=num_inference_steps,
-        generator=torch.Generator(device="cpu").manual_seed(seed),
-    ).images[0]
-```
-
-**Variant A `image-to-image` template (`flux` family only):**
-
-```python
-"""Image-to-image inference. Dispatches mflux <-> diffusers by platform."""
-from functools import lru_cache
-from typing import Any
-
-from <app_name> import config
-from PIL import Image
-
-
-# Flux1Kontext.generate_image returns a GeneratedImage wrapper; call .image.
-@lru_cache(maxsize=1)
-def load_model() -> Any:
-    if config.IS_APPLE_SILICON:
-        return _load_mflux()
-    return _load_diffusers()
-
-
-def _load_mflux():
-    # <inlined verbatim from mflux-families.md Part B, flux i2i subsection>
-    from mflux.models.common.config import ModelConfig
-    from mflux.models.flux.variants.kontext.flux_kontext import Flux1Kontext
-
-    model = Flux1Kontext(model_config=ModelConfig.dev_kontext())
-    return ("mflux", model)
-
-
-def _load_diffusers():
-    import torch
-    from diffusers import FluxImg2ImgPipeline
-
-    device = (
-        config.DEVICE
-        if config.DEVICE != "auto"
-        else ("cuda" if torch.cuda.is_available() else "cpu")
-    )
-    pipe = FluxImg2ImgPipeline.from_pretrained(
-        config.MODEL_ID, revision=config.MODEL_REVISION,
-        torch_dtype=torch.bfloat16, token=config.HF_TOKEN,
-    ).to(device)
-    return ("diffusers", pipe)
-
-
-def edit_image(prompt, image_paths, num_inference_steps, seed) -> Image.Image:
-    backend, model = load_model()
-    if backend == "mflux":
-        # Flux1Kontext takes image_path (singular) and guidance=4.0.
-        return model.generate_image(
-            seed=seed, prompt=prompt,
-            num_inference_steps=num_inference_steps,
-            image_path=image_paths[0],
-        ).image
-    import torch
-    reference = Image.open(image_paths[0])
-    return model(
-        prompt=prompt, image=reference,
-        num_inference_steps=num_inference_steps,
-        generator=torch.Generator(device="cpu").manual_seed(seed),
-    ).images[0]
-```
-
-**Variant B — Apple-Silicon-only family** (every family flagged Apple-Silicon-only in `references/mflux-families.md` Part A). Same shape as the existing `audio-to-audio` template — fail fast at `load_model()`:
-
-```python
-"""Image inference. Apple-Silicon-only (no diffusers fallback for this family)."""
-from functools import lru_cache
-from typing import Any
-
-from <app_name> import config
-from PIL import Image
-
-
-# generate_image returns a GeneratedImage wrapper; call .image for PIL.Image.
-@lru_cache(maxsize=1)
-def load_model() -> Any:
-    if not config.IS_APPLE_SILICON:
-        raise RuntimeError(
-            "This app requires Apple Silicon. The <family> family has no "
-            "diffusers fallback. Run on a Mac with Apple Silicon, or "
-            "re-scaffold from an HF model card whose family has a diffusers "
-            "fallback (e.g., black-forest-labs/FLUX.1-schnell)."
-        )
-    # <inlined verbatim from mflux-families.md Part B>
-    from mflux.models.common.config import ModelConfig
-    from mflux.models.flux2.variants import Flux2Klein
-
-    model = Flux2Klein(model_config=ModelConfig.flux2_klein_9b())
-    return ("mflux", model)
-
-
-def generate_image(prompt, width, height, num_inference_steps, seed) -> Image.Image:
-    _, model = load_model()
-    # Match kwargs to the Part B snippet (e.g. guidance=4.0 for flux).
-    return model.generate_image(
-        seed=seed, prompt=prompt, width=width, height=height,
-        num_inference_steps=num_inference_steps,
-    ).image
-```
-
-**Variant B `image-to-image` template (Apple-Silicon-only families with an edit variant):**
-
-Emit this variant only when the matched family has an image-to-image class in `mflux-families.md` Part B — `flux2`, `qwen_image`, `fibo`. `z_image` has no i2i variant; omit the image-to-image page entirely for `z_image` inputs with `pipeline_tag=image-to-image` (the skill rejects this at scaffold time with a clear error instead of generating a broken edit page).
-
-```python
-"""Image-to-image inference. Apple-Silicon-only (no diffusers fallback)."""
-from functools import lru_cache
-from typing import Any
-
-from <app_name> import config
-from PIL import Image
-
-
-# generate_image returns a GeneratedImage wrapper; call .image for PIL.Image.
-@lru_cache(maxsize=1)
-def load_model() -> Any:
-    if not config.IS_APPLE_SILICON:
-        raise RuntimeError(
-            "This app requires Apple Silicon. The <family> family has no "
-            "diffusers fallback. Run on a Mac with Apple Silicon, or "
-            "pick a model family with a generic diffusers backend "
-            "(e.g., any black-forest-labs/FLUX.1-* model)."
-        )
-    # <inlined verbatim from mflux-families.md Part B, family's i2i subsection>
-    from mflux.models.common.config import ModelConfig
-    from mflux.models.flux2.variants import Flux2KleinEdit
-
-    model = Flux2KleinEdit(model_config=ModelConfig.flux2_klein_9b())
-    return ("mflux", model)
-
-
-def edit_image(prompt, image_paths, num_inference_steps, seed) -> Image.Image:
-    _, model = load_model()
-    # REPLACE with the matched family's call — shapes differ, do not inline verbatim:
-    #
-    #   flux2:       return model.generate_image(
-    #                    seed=seed, prompt=prompt,
-    #                    image_paths=image_paths,
-    #                    num_inference_steps=num_inference_steps,
-    #                ).image
-    #
-    #   qwen_image:  return model.generate_image(
-    #                    seed=seed, prompt=prompt,
-    #                    image_paths=image_paths,
-    #                    num_inference_steps=num_inference_steps,
-    #                    guidance=2.5,
-    #                ).image
-    #
-    #   fibo:        return model.generate_image(
-    #                    seed=seed, prompt=prompt,
-    #                    image_path=image_paths[0],  # singular: fibo takes one path
-    #                    num_inference_steps=num_inference_steps,
-    #                    guidance=3.5,
-    #                ).image
-    raise NotImplementedError(
-        "Replace this body with the per-family edit_image call from the comment above."
-    )
-```
-
-**Fallback-only path (`mflux_family = None`):** emit a diffusers-only template — no mflux import, no `IS_APPLE_SILICON` check, no platform dispatch. The scaffold produces a working app that uses `diffusers` on all platforms. Apply standard `_require("MODEL_ID")` / optional `HF_TOKEN` rules as today.
-
-Substitute `<family>`, the mflux class, and the `ModelConfig` constructor from the matched `references/mflux-families.md` Part B block at scaffold time. Do not leave `<...>` placeholders in the generated app.
+For each Variant A and Variant B `inference.py` template, inline the matched family's Part B snippet from `references/mflux-families.md` (imports + instantiation + per-call kwargs) verbatim into the marked locations. Do not leave `<...>` placeholders in the generated app.
 
 ### `src/<app_name>/data.py` and `viz.py`
 
@@ -704,50 +441,7 @@ When the source has multiple independent flows, generate one page module per flo
 
 ### `tests/conftest.py`
 
-Sets required env vars before any test imports the package. Provides a mocked-model fixture so inference tests do not touch the network.
-
-```python
-"""Test fixtures. Set required env vars before package import."""
-import os
-
-os.environ.setdefault("MODEL_ID", "test-model")
-# os.environ.setdefault("HF_TOKEN", "test-token")  # enable for gated models
-
-import pytest
-
-
-class _StubModel:
-    """Minimal interface used by inference.py."""
-    def generate(self, *args, **kwargs):
-        return [[0, 1, 2]]
-
-    def predict(self, x):
-        return [0] * len(x)
-
-
-@pytest.fixture
-def mock_model(monkeypatch):
-    from <app_name> import inference
-    monkeypatch.setattr(inference, "load_model", lambda: ("stub", _StubModel(), None))
-    return _StubModel()
-
-
-class _StubMfluxModel:
-    """Minimal interface used by mflux-backed inference.py templates."""
-    def generate_image(self, *args, **kwargs):
-        from PIL import Image
-
-        class _StubGenerated:
-            image = Image.new("RGB", (64, 64))
-        return _StubGenerated()
-
-
-@pytest.fixture
-def mock_mflux_model(monkeypatch):
-    from <app_name> import inference
-    monkeypatch.setattr(inference, "load_model", lambda: ("mflux", _StubMfluxModel()))
-    return _StubMfluxModel()
-```
+Use the **Test fixtures** template from `references/scaffolding-templates.md`. Substitute `<app_name>` throughout. Sets required env vars before any test imports the package and provides mocked-model fixtures so inference tests do not touch the network.
 
 ### `tests/test_config.py`
 
