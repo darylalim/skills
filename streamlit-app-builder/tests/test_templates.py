@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-import pytest
+import pytest  # noqa: F401  # used in Task 4 parametrize
 
 REPO_ROOT = Path(__file__).resolve().parents[1]  # streamlit-app-builder/
 
