@@ -102,7 +102,14 @@ Assemble in this order:
 2. **Imports** — `os`, `streamlit as st`, `dotenv.load_dotenv`, plus library-specific imports from the chosen scaffolding template.
 3. **`load_dotenv()`** — call once at module level so `.env` values populate `os.environ`.
 4. **`MODEL_ID` constant** — hard-coded from Step 1's input URL: `MODEL_ID = "<org>/<model>"`.
-5. **Gated-model gate (when `is_gated: true`)** — after `load_dotenv()`:
+5. **Gated-model gate** — see the snippet below; emit only when `is_gated: true`.
+6. **`load_model()`** — copy from the chosen scaffolding template, decorated with `@st.cache_resource`.
+7. **Inference function** — copy from the chosen scaffolding template (`run_inference` / `generate_response` / `generate_image` / `edit_image` / `embed`).
+8. **UI body** — paste at module scope after the inference function — no function wrapper.
+
+#### Gated-model gate snippet
+
+Insert this after `load_dotenv()` (between assembly step 4 and step 6) when the model card has `gated: true`:
 
 <!-- skip-validate -->
 ```python
@@ -113,9 +120,6 @@ if not os.getenv("HF_TOKEN"):
     )
     st.stop()
 ```
-6. **`load_model()`** — copy from the chosen scaffolding template, decorated with `@st.cache_resource`.
-7. **Inference function** — copy from the chosen scaffolding template (`run_inference` / `generate_response` / `generate_image` / `edit_image` / `embed`).
-8. **UI body** — copy from the matching `references/pipeline-tag-patterns.md` section, top-level (no function wrapper).
 
 ### File 2: `pyproject.toml`
 
