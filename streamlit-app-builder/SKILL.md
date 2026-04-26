@@ -1,771 +1,201 @@
 ---
 name: streamlit-app-builder
 description: >
-  Generate a production-structured Streamlit app from an existing artifact: a
-  local Python script, a Jupyter notebook (local or URL), a HuggingFace
-  model card URL, or a GitHub URL (blob `.py` or repo root). Triggers: build
-  a Streamlit app for production, wrap a notebook into a Streamlit app,
-  generate a UI for a HuggingFace model, scaffold from a GitHub repo or a
-  specific GitHub file, any link to a `.ipynb` or to
-  `huggingface.co/<org>/<model>` or to `github.com/<owner>/<repo>`, turn a script
-  into a multipage Streamlit app, scaffold a Streamlit app intended for
-  paying customers.
+  Use when the user wants to scaffold a Streamlit prototype for a HuggingFace
+  model. Triggers: "build a Streamlit demo for an HF model", "generate a
+  Streamlit UI for huggingface.co/<org>/<model>", "prototype a Streamlit app
+  for an HF model", "turn an HF model card into a Streamlit demo", "scaffold a
+  Streamlit app for an HF inference model", any URL of the shape
+  `huggingface.co/<org>/<model>`. Skip when the input is a Python script, a
+  Jupyter notebook, a GitHub URL, or any non-HF artifact — the
+  dash-app-builder and gradio-app-builder skills are the right alternatives.
 ---
 
-# Streamlit App Builder
+# Streamlit App Builder (HF model card → prototype)
 
-Generate a production-structured Streamlit app package from an existing artifact. Output is a `src/<app_name>/` Python package with a multipage `st.navigation` router, env-based config with fail-fast validation, and linted/typed/tested code — ready to plug into the team's own production infrastructure.
+Generate a single-file Streamlit prototype from a HuggingFace model card URL. Output is a flat four-file project (`streamlit_app.py`, `pyproject.toml`, `.env.example`, `test_streamlit_app.py`) ready to `uv sync && streamlit run`.
 
-## Non-goals
+## When to use
 
-The skill **does not** produce, and the generated `README.md` documents these as the team's responsibility:
+**Use:** the user passes a `huggingface.co/<org>/<model>` URL and wants a working Streamlit demo.
 
+**Don't use** (redirect explicitly):
+- Python script (`.py` file path or `github.com/.../*.py` blob URL) → `gradio-app-builder` or `dash-app-builder`
+- Jupyter notebook (`.ipynb`) → `gradio-app-builder` or `dash-app-builder`
+- GitHub repo root URL → `dash-app-builder` or `gradio-app-builder`
+- `huggingface.co/datasets/...`, `huggingface.co/spaces/...` — not supported
+
+When rejecting, emit a one-line message naming the right alternative skill.
+
+## Non-goals (silent — no need to surface in the report)
+
+- Production-grade structure (multipage routing, fail-fast config, src layout) — this is a prototype generator
 - Authentication / authorization
-- Deployment artifacts (Dockerfile, Kubernetes manifests, CI workflows)
-- Database or storage layers
-- Observability (structured logging infra, metrics, tracing)
-- Secrets management at deploy time — the skill covers only the local `.env` source; production secrets come from the deployment platform
-
-## Cross-cutting principles
-
-### 1. Always verify against live `docs.streamlit.io` and `huggingface.co/docs`
-
-Streamlit and HuggingFace APIs evolve. Before generating code, fetch the current docs for high-churn topics and confirm API shapes. Canonical URLs live in `references/streamlit-docs-index.md` and `references/huggingface-docs-index.md`. See Step 4 for the full fetch rules, including which HF pages are library-conditional.
-
-**Mandatory Streamlit fetches** before code generation:
-- Multipage + `st.navigation` + `st.Page`
-- Caching (`@st.cache_resource`, `@st.cache_data`)
-- App testing (`streamlit.testing.v1.AppTest`)
-- Secrets
-- Plus the widget page(s) for the classified UI pattern (e.g., `st.chat_input` for chat, `st.audio_input` for ASR)
-
-### 2. Prefer MLX on Apple Silicon
-
-When the source artifact references a model with an MLX-converted equivalent on HuggingFace, the generated app uses an MLX backend on `arm64-darwin` and falls back to `transformers` / `diffusers` / `huggingface_hub` elsewhere.
-
-**MLX backend index:**
-
-| `pipeline_tag` | MLX module | PyPI | Apple-Silicon-only? | Fallback |
-|---|---|---|---|---|
-| `text-generation`, `conversational` | `mlx_lm` | `mlx-lm` | no | `transformers` |
-| `image-to-text`, `image-text-to-text` | `mlx_vlm` | `mlx-vlm` | no | `transformers` |
-| `automatic-speech-recognition` | `mlx_audio.stt` | `mlx-audio` | no | `transformers[audio]` (via `pipeline("automatic-speech-recognition")`) |
-| `text-to-speech` | `mlx_audio.tts` | `mlx-audio` | no | `transformers[audio]` (SpeechT5 / Bark / Parler-TTS) |
-| `audio-to-audio` | `mlx_audio.sts` | `mlx-audio` | **yes** | — (`RuntimeError` at model load off Apple Silicon) |
-| `text-to-image` | `mflux.models.<family>` | `mflux` | varies by family | `diffusers` for `flux` family; none for Apple-Silicon-only families per `references/mflux-families.md` Part A |
-| `image-to-image` | `mflux.models.<family>` | `mflux` | varies by family | `diffusers` for `flux` family; none for Apple-Silicon-only families per `references/mflux-families.md` Part A |
-
-For `text-to-image` and `image-to-image`, the Apple-Silicon-only flag is **per-family**, not per pipeline-tag — see `references/mflux-families.md` Part A for the per-family policy. `inference.py` dispatches per-family at scaffold time (Step 5).
-
-Apple-Silicon-only rows install no fallback; `inference.py` raises a clear `RuntimeError` at model load on non-Apple-Silicon hosts, and the generated `README.md` notes the platform requirement.
-
-The MLX lookup is independent of where the skill itself runs. A Linux developer scaffolding from an HF model card still produces an app with MLX support wired in — runtime dispatch activates MLX only when a user later runs the app on a Mac. (Exception: `audio-to-audio` apps run on Apple Silicon only, by design.)
-
-MLX support is encoded in the generated app as follows:
-- `pyproject.toml` declares MLX and transformers with environment markers so `uv sync` installs the right backend per host. Audio-to-audio apps declare `mlx-audio` with an Apple-Silicon-only marker and omit the fallback dep.
-- `src/<app_name>/inference.py` reads `config.IS_APPLE_SILICON` and dispatches at runtime.
-
-**MLX model resolution:** query `https://huggingface.co/api/models?author=mlx-community&search=<base-name>` and pick the highest-download-count variant. If the base name has no `mlx-community` match, note "no MLX equivalent found" in the final report and generate the app with `transformers` only. Audio-to-audio inputs without an `mlx-community` match fail at scaffold time — there is no transformers fallback to generate toward. (A separate failure mode, where the model exists but no `mlx_audio.sts` class mapping is known, is handled by the dispatch table in the `inference.py` template.)
+- Deployment artifacts (Dockerfile, K8s, CI)
+- Database / storage layers
+- Observability
+- MLX / Apple-Silicon-specific acceleration (transformers / diffusers run on Macs, just slower)
+- License or commercial-use surfacing
+- Sibling-model suggestions
 
 ## Step 1: Identify and load the input
 
-Classify the input into one of four types, then load it.
+The input MUST be an HF model card URL of the shape `https://huggingface.co/<org>/<model>` (with or without trailing slash; query strings and fragments are stripped before classification).
 
-### Local Python script (`.py`)
+**Reject early** with a clear message if the input is any other URL shape:
+- `github.com/...` (any path) → *"Pass an HF model card URL (`huggingface.co/<org>/<model>`). For Python scripts or notebooks on GitHub, use the `dash-app-builder` or `gradio-app-builder` skills."*
+- `*.ipynb` URL → same redirect to dash/gradio.
+- `huggingface.co/datasets/...` or `huggingface.co/spaces/...` → *"This skill scaffolds prototypes from model cards only. Datasets and Spaces are not supported."*
+- File path or any other shape → *"Pass an HF model card URL (`huggingface.co/<org>/<model>`)."*
 
-Read the file. Apply Step 2's AST analysis directly.
+**Load the model card:**
 
-### Jupyter notebook (`.ipynb`, local or URL)
+1. Strip query string and fragment from the URL. Resolve `<org>/<model>` from the path.
+2. Fetch metadata: `https://huggingface.co/api/models/<org>/<model>` → JSON. Capture `pipeline_tag`, `library_name`, `tags`, `gated`, `downloads`.
+3. Fetch the README: `https://huggingface.co/<org>/<model>/raw/main/README.md`. Use the YAML frontmatter as a fallback for any metadata fields the API didn't return; capture the first library-idiomatic Python code snippet for use as the `inference_snippet` in the IR.
+4. On HTTP 404 from the metadata API: fail with *"Model `<org>/<model>` not found on HuggingFace, or it's a private repo without access. Verify the URL."*
+5. On HTTP 401/403: *"Access denied to `<org>/<model>`. If gated, run `huggingface-cli login` first; if private, ensure your `HF_TOKEN` has access."*
 
-Resolve the URL to a raw `.ipynb` source:
-
-- GitHub: `github.com/<owner>/<repo>/blob/<ref>/<path>.ipynb` → `raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>.ipynb`
-- Colab: `colab.research.google.com/drive/<id>` → Colab export endpoint
-- GitLab: raw endpoint, or append `?ref=main&format=json` to the web URL
-- Other: use directly if the URL serves `.ipynb` JSON
-
-Download and extract code cells:
-
-```bash
-curl -L -o notebook.ipynb "<resolved_raw_url>"
-```
-
-```python
-import json
-
-with open("notebook.ipynb") as f:
-    nb = json.load(f)
-code_cells = [
-    "".join(cell["source"])
-    for cell in nb["cells"]
-    if cell["cell_type"] == "code"
-]
-```
-
-Markdown cells are preserved only as docstrings on the scaffolded home page.
-
-### HuggingFace model card URL
-
-Resolve the model ID from the URL (strip `https://huggingface.co/` prefix; keep `<org>/<model>`). Fetch:
-
-- **Metadata:** `https://huggingface.co/api/models/<id>` → JSON with `pipeline_tag`, `library_name`, `tags`, `gated`, `license`, `license_name`, `downloads`.
-- **README:** `https://huggingface.co/<id>/raw/main/README.md` → YAML frontmatter (fallback for metadata fields), first library-idiomatic code snippet (seeds the inference function), license text.
-- **MLX equivalent:** `https://huggingface.co/api/models?author=mlx-community&search=<base-name>` — always performed for HF-card inputs, regardless of the skill's host platform. The generated app's runtime dispatch decides whether to use it. **Skip this fetch when `pipeline_tag ∈ {text-to-image, image-to-image}`** — those pipeline tags use the mflux family resolution below instead of the mlx-community search, which produces misleading matches for image-generation models.
-- **mflux family (conditional, text-to-image / image-to-image only):** when `pipeline_tag ∈ {text-to-image, image-to-image}`, consult `references/mflux-families.md` Part A. Iterate the routing table top-to-bottom; on the first regex match against `<org>/<model>`, set `mflux_family` to the matched row's `Family key` in the Step 2 IR. On no match, set `mflux_family = None` — the scaffold still produces a working app via diffusers, just without MLX acceleration. For any other `pipeline_tag`, leave `mflux_family = None` and rely on the `MLX equivalent` bullet above.
-- **Org freshness (conditional):** When `<org>` ∈ `{mlx-community, google, ibm-granite, black-forest-labs}`, WebFetch `https://huggingface.co/<org>` with the prompt:
-
-  > "List the models shown prominently on this organization's page. For each, give the model ID (`<org>/<name>`) and the pipeline_tag if visible (e.g., `text-generation`, `image-to-text`). Return up to 10 models. Skip datasets and Spaces."
-
-  Filter the returned models: keep those with the same `pipeline_tag` as the input and a different model ID. Take up to 2 as *siblings*. Store the list as `siblings` in the Step 2 IR dict; Step 8 reads it to render the conditional "Sibling models" sub-section. If the fetch fails or the filter returns nothing, the check is silent — no report line, no error.
-
-### GitHub URL
-
-Classified **after** the `.ipynb` and HuggingFace branches — those already claim their URL shapes; this branch only sees GitHub `.py` blob URLs, repo-root URLs, or unsupported variants.
-
-**Authentication (optional but recommended):** at GitHub URL branch entry, read `GH_TOKEN` from the environment. If set, attach `Authorization: Bearer $GH_TOKEN` to every `api.github.com` and `raw.githubusercontent.com` request below. With a token, the rate ceiling is 5000/hr and private repos that the token's user can read become accessible. Without a token, the unauthenticated 60/hr ceiling applies.
-
-**URL normalization (required before pattern matching):** strip any query string (`?foo=bar`) and fragment (`#L12`) from the input URL, and apply the classification patterns below to the cleaned URL only. Trailing-slash tolerance is preserved by the patterns themselves. Example: `…/inference.py?ref=main#L42` → `…/inference.py`.
-
-**Classification patterns, in order:**
-
-| Match | Mode |
-|---|---|
-| `^https?://github\.com/([\w.-]+)/([\w.-]+)/blob/([^/]+)/(.+\.py)/?$` | **blob-`.py`** |
-| `^https?://github\.com/([\w.-]+)/([\w.-]+)/?$` | **repo-root** |
-| Other `github.com/...` URL (`tree/`, `pulls/`, `issues/`, `wiki/`, `commit/`, …) | **reject** |
-| Non-github.com host (`gist.github.com`, `gitlab.com`, `bitbucket.org`, raw pastebins) | **reject** |
-
-Branch names, tags, and 7–40-char commit SHAs all match the `[^/]+` ref class. **Limitation:** slash-containing branch names (e.g., `feature/foo-bar`) are not supported — the regex captures the first segment as `<ref>` and the rest as `<path>`, which can mis-parse. Ask the user to pass a blob URL using the default branch, a tag, or a commit SHA instead.
-
-**Rejection messages (exact text — no silent fallbacks):**
-- Unsupported `github.com` variant: *"Pass a blob URL to a `.py` file (`github.com/<owner>/<repo>/blob/<ref>/<path>.py`), a `.ipynb` file (handled by the notebook branch), or the repo root URL (`github.com/<owner>/<repo>`). `tree/` / `pulls/` / `commit/` / etc. are not supported."*
-- Non-github.com host: *"This skill accepts github.com URLs only. Clone locally and re-run with a file path."*
-
-**Blob-`.py` mode:**
-
-1. Resolve `blob/<ref>/<path>.py` → `https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>.py`.
-2. Download with `curl -L --max-time 30 ${GH_TOKEN:+-H "Authorization: Bearer $GH_TOKEN"}`. On non-200 response: fail with the HTTP status code and resolved URL. If the status is 404 and the original URL had multiple path segments between `blob/` and the `.py` file, the branch name may contain a slash (e.g., `feature/foo-bar`) — the regex mis-parses such URLs; ask the user to pass a blob URL using the default branch, a tag, or a commit SHA instead.
-3. Feed the downloaded source into Step 2's AST walker, unchanged.
-4. Populate IR: `source_url = <original input URL>`, `source_ref = <ref parsed from URL>`, `license = None` (blob mode makes no GitHub API call, so SPDX metadata is unavailable — downstream README / Step 8 license-flag treat `None` per the absent-value convention).
-
-**Repo-root mode:**
-
-1. `GET https://api.github.com/repos/<owner>/<repo>` (with `Authorization: Bearer $GH_TOKEN` header when `GH_TOKEN` is set). Capture `default_branch` and `license.spdx_id` from the response. When the repo has no detected license, the API returns `license: null` (or omits the `license` object entirely) — store `license = None` in that case, matching blob-`.py` mode.
-   - HTTP 404 → fail: *"Repo not found or private: `<owner>/<repo>`."*
-   - HTTP 403 (rate limit) → fail with a context-aware message: with `GH_TOKEN` set, *"Rate limit hit on authenticated GitHub request — wait or use a different token."*; without `GH_TOKEN`, *"Rate limit hit on unauthenticated GitHub request (60/hr ceiling). Set `GH_TOKEN` in the environment for the 5000/hr authenticated quota."*
-   - Other non-200 → fail with status code and URL.
-2. Fetch `https://raw.githubusercontent.com/<owner>/<repo>/<default_branch>/README.md` with `curl -L --max-time 30 ${GH_TOKEN:+-H "Authorization: Bearer $GH_TOKEN"}`. On 404, retry once with lowercase `readme.md` (case-sensitivity varies by repo). If both fail, emit: *"Repo has no `README.md` or `readme.md` at the default branch root. If the repo uses a different filename (e.g., `Readme.md`, `README.rst`), pass a blob URL to the file you want to wrap instead."*
-3. Extract fenced code blocks matching `` ```(?:python|py)\n(.*?)``` `` (DOTALL). Take the **first match whose content is not purely install/setup commands** — skip blocks whose every non-comment line begins with `pip`, `conda`, `uv add`, `poetry add`, `!pip`, or `brew` (badge / install snippets that commonly precede the real usage example). On zero matching blocks (either no `python`-tagged blocks at all, or all are install-only): fail with *"No usable `python`-tagged code block found in `<owner>/<repo>`'s `README.md` (install-only blocks skipped). Pass a blob URL to the specific file to wrap — e.g., `github.com/<owner>/<repo>/blob/<default_branch>/inference.py`."*
-4. Run `ast.parse` on the extracted snippet. On `SyntaxError`: fail — *"First `python` block in README has syntax errors: `<msg>`. Pass a blob URL instead."*
-5. **Local-import guard.** Walk the AST for `Import` / `ImportFrom` nodes and reject **relative imports only** (`from . import x`, `from .foo import y`, `from .. import z`) with *"README snippet uses a relative import, which isn't resolvable from a standalone scaffold. Pass a blob URL to the source file instead."* All absolute imports pass through. If an absolute import turns out to be local-only (no PyPI counterpart), Step 6's `uv add <name>` fails there with a clear error — late-binding but reliable, and it avoids the false-positive/negative traps of heuristic local-import detection at this step.
-6. Feed the snippet into Step 2's AST walker.
-7. Populate IR: `source_url = <original input URL>`, `source_ref = <default_branch>`, `license = <license.spdx_id from API>`.
-
-## Step 2: Build the internal representation
-
-Produce this structure in memory, consumed by all subsequent steps:
+## Step 2: Build the IR
 
 <!-- skip-validate -->
 ```python
 {
-    "pattern": "<UI pattern key from pipeline-tag-patterns.md>",
-    "inference_fn": {"name": "...", "params": [...], "returns": "..."} or None,
-    "data_fns": [...],
-    "viz_fns": [...],
-    "deps": ["pypi-name", ...],
-    "is_gated": bool,
-    "license": "<SPDX or license_name>",
-    "mlx_equivalent": "<mlx-community/...>" or None,
-    "mflux_family": "<family key from references/mflux-families.md Part A>" or None,   # populated only by HF-card inputs with pipeline_tag in {text-to-image, image-to-image}; None otherwise
-    "siblings": ["<org>/<model>", ...],   # from Step 1's org-freshness check (HF-card inputs) or Step 2's AST-driven check (code/notebook inputs); [] when no priority-org reference is found or the WebFetch returns nothing usable
-    "source_url": "<original input URL>" or None,   # populated by GitHub URL branch only
-    "source_ref": "<resolved git ref>" or None,     # populated by GitHub URL branch only
+    "model_id": "<org>/<model>",
+    "pipeline_tag": "<tag>",                              # from API metadata
+    "library_name": "transformers" | "diffusers" | "sentence-transformers" | None,
+    "is_gated": bool,                                     # api.gated == True
+    "deps": ["streamlit", "python-dotenv", ...],          # see Step 4
+    "inference_snippet": "<first python block from README>" or None,
 }
 ```
 
-**Absent-value convention:** scalar fields (`inference_fn`, `mlx_equivalent`, `mflux_family`, `source_url`, `source_ref`) use `None` when absent; list fields (`data_fns`, `viz_fns`, `deps`, `siblings`) use `[]`. New fields follow the same pattern. Existing `.py` / `.ipynb` / HF-card branches leave `source_url` / `source_ref` as `None` — only the GitHub URL branch populates them.
-
-**Code input (script or notebook):** AST-parse the code (`ast.parse` + walk `FunctionDef`) to extract top-level function signatures with type annotations. Classify each function as inference (calls `.predict`, `.generate`, `.forward`, `.__call__` on a model), data (reads/writes files, manipulates DataFrames), or viz (returns a matplotlib/plotly figure). Collect imports for dependency inference.
-
-**MLX resolution is not performed for code inputs** — `mlx_equivalent` stays `None` because there is no `pipeline_tag` for the AST walk to anchor an MLX search against. MLX lookup fires only for HF-card URL inputs, per Step 1.
-
-**Sibling extension for code/notebook inputs.** Walk `Call` nodes whose function is named `from_pretrained` (`Call.func.attr == "from_pretrained"`). For each call, inspect the first positional argument or the `pretrained_model_name_or_path=` keyword. If it's a string `Constant` matching `^([\w-]+)/([\w.-]+)$`, capture `<org>/<model>`. For each captured `<org>` in the priority list (`mlx-community`, `google`, `ibm-granite`, `black-forest-labs`), perform the org-freshness `WebFetch` exactly as Step 1 does for HF-card inputs (same prompt, same filtering rules), with one relaxation: code inputs lack a `pipeline_tag`, so the filter applies on org and dedup-against-input only — no `pipeline_tag` filter. Store as `siblings` in the IR.
-
-**`mflux_family` population:** only HF model card inputs with `pipeline_tag ∈ {text-to-image, image-to-image}` can produce a non-`None` value; every other input type (`.py`, `.ipynb`, GitHub URL) and every other `pipeline_tag` leaves `mflux_family = None`. As with `mlx_equivalent`, the skill does not infer `mflux_family` from string literals in a code/notebook input.
-
-**HF model card input:** Map fields directly from the API JSON. Derive `deps` from `library_name` + `tags` (e.g., `transformers` → `transformers` + `torch`; `diffusers` → `diffusers` + `transformers` + `torch`; `sentence-transformers` → `sentence-transformers` + `torch`). Extract the first library-idiomatic snippet from the README as the seed for `inference.py`'s transformers branch.
+`library_name` resolution: prefer the API's `library_name` field. If the field is missing, default to `transformers`. If the API's `library_name == "sentence-transformers"` OR the README explicitly recommends `sentence-transformers` (look for `from sentence_transformers import` in the README's code snippets), set `library_name = "sentence-transformers"` regardless of the API value.
 
 ## Step 3: Classify the UI pattern
 
-**HF input:** look up `pipeline_tag` in `references/pipeline-tag-patterns.md`. Use the matching page body template.
+Look up `pipeline_tag` in `references/pipeline-tag-patterns.md`. The matching section's UI body is what gets pasted into `streamlit_app.py` after the inference function.
 
-**Code input:** use the heuristic below. When multiple indicators match, classify on the most specific:
+**Rejected pipeline tag:**
+- `pipeline_tag == "audio-to-audio"` → fail at Step 3 with: *"audio-to-audio has no clean transformers pipeline. This skill can't scaffold a working prototype for audio-to-audio models. For source separation or speech enhancement, use the model's reference implementation directly."*
 
-| Indicators                                                                       | Pattern                               |
-|----------------------------------------------------------------------------------|---------------------------------------|
-| `sklearn`, `torch`, `keras`, `.predict()`, loads a model                         | Inference (match to `pipeline_tag` if recognizable, else General Script) |
-| `pandas` I/O + DataFrame transforms, no model                                    | Data processing page (file upload → transform → download) |
-| `matplotlib`, `plotly`, `seaborn`, `.plot()`                                     | Visualization page (interactive chart controls) |
-| Functions with scalar / text parameters, no model, no I/O                        | General Script                        |
+**Unrecognized pipeline tag** → fall through to the **Fallback: General Script** section in `references/pipeline-tag-patterns.md`.
 
-Fall through to "General Script" when ambiguous. The corresponding template is in `references/pipeline-tag-patterns.md` under the Fallback section.
+## Step 4: Scaffold the four files
 
-## Step 4: Fetch live Streamlit and HuggingFace docs
+### Routing table: `library_name` × `pipeline_tag` → scaffolding template
 
-Before writing code, fetch the relevant pages from `docs.streamlit.io` and `huggingface.co/docs` and verify APIs match the templates below. Canonical URLs live in `references/streamlit-docs-index.md` and `references/huggingface-docs-index.md`.
-
-### Streamlit docs
-
-Fetched for every run — Streamlit is the output framework regardless of input type.
-
-**Always:**
-- Multipage + `st.navigation` + `st.Page`
-- `@st.cache_resource` + `@st.cache_data`
-- `streamlit.testing.v1.AppTest`
-- Secrets (informs `.gitignore` entry and README guidance)
-
-**Conditional — based on classified pattern:**
-- Chat: `st.chat_input`, `st.chat_message`
-- ASR / audio: `st.audio_input`, `st.audio`
-- Image: `st.file_uploader`, `st.image`
-- Visualization: `st.plotly_chart`, `st.line_chart`, `st.dataframe`
-
-### HuggingFace docs
-
-**When to fetch the baseline set** (Hub security tokens, `huggingface-cli` login):
-- **HF-card input:** always.
-- **Code / notebook input:** when Step 2's AST walk detected an import of `huggingface_hub`, `transformers`, or `diffusers`. If none of those is imported, skip the HF docs subsection entirely.
-
-**Library-conditional fetches:** include a row from `references/huggingface-docs-index.md` when its trigger matches:
-- `library_name == "transformers"` (HF-card) or `transformers` imported (code input) → Pipelines + Auto classes.
-- Additionally, when `pipeline_tag == "automatic-speech-recognition"` → ASR task guide.
-- Additionally, when `pipeline_tag == "text-to-speech"` → TTS task guide.
-- `library_name == "diffusers"` (HF-card) or `diffusers` imported (code input) → Loading pipelines + Quick tour.
-
-**mflux family fetch (conditional):** when `mflux_family` in the IR is non-`None`, fetch `https://raw.githubusercontent.com/filipstrand/mflux/main/src/mflux/models/<mflux_family>/README.md` to verify the canonical Python snippet in `references/mflux-families.md` Part B still matches upstream. If the fetched snippet disagrees (class renamed, `ModelConfig` factory renamed, `generate_image` kwargs changed), prefer the fetched docs — update the inlined imports and class names in the generated `inference.py` before proceeding to Step 7's quality gate. URL is off-domain (GitHub), so the index-in-`huggingface-docs-index.md` policy does not apply — keep this rule inline here.
-
-### Rules for both sources
-
-If any fetched page shows an API that differs from the template in this file, prefer the fetched docs. Update the template accordingly before generating the app. When a page is unreachable, proceed with the templates here and note in the final report: "live verification skipped for <URL>".
-
-### Maintain a fetched-URLs list
-
-As you fetch each URL above, record it. In Step 8 the report enumerates this list and verifies it against the **Verification list** sections in `references/streamlit-docs-index.md` and `references/huggingface-docs-index.md`. If any required URL is missing at Step 8, return here and fetch it before reporting the scaffold complete.
-
-## Step 5: Scaffold files
-
-Create the following directory tree (substitute `<app-name>` / `<app_name>`):
-
-```
-<app-name>/
-├── .streamlit/
-│   └── config.toml
-├── src/
-│   └── <app_name>/
-│       ├── __init__.py
-│       ├── config.py
-│       ├── inference.py
-│       ├── data.py
-│       ├── viz.py
-│       └── pages/
-│           ├── __init__.py
-│           ├── home.py
-│           └── <feature>.py           # only when source has multiple flows
-├── tests/
-│   ├── __init__.py
-│   ├── conftest.py
-│   ├── test_config.py
-│   ├── test_inference.py
-│   ├── test_data.py
-│   ├── test_viz.py                    # only when viz.py exists
-│   └── test_app_smoke.py
-├── streamlit_app.py
-├── pyproject.toml
-├── uv.lock
-├── .env.example
-├── .gitignore
-└── README.md
-```
-
-`<app-name>` is hyphenated for the outer directory / `uv init` project name. `<app_name>` is its Python-safe equivalent (underscores) for the importable package — `uv init --package` performs this normalization automatically.
-
-**Always generate multipage** even when the source has a single flow. A single `home.py` costs almost nothing and makes adding pages later frictionless.
-
-### `streamlit_app.py` (entrypoint — navigation router)
-
-```python
-"""Streamlit entrypoint. Registers pages with st.navigation."""
-import streamlit as st
-from <app_name>.pages import home
-
-
-def main() -> None:
-    pages = [
-        st.Page(home.render, title="Home", icon=":material/home:"),
-        # Add st.Page(<module>.render, title="...") as the app grows.
-    ]
-    st.navigation(pages).run()
-
-
-if __name__ == "__main__":
-    main()
-```
-
-### `.streamlit/config.toml`
-
-```toml
-[server]
-headless = true
-port = 8501
-fileWatcherType = "watchdog"
-
-[browser]
-gatherUsageStats = false
-
-[theme]
-# Override as the team's branding requires; defaults are sensible.
-```
-
-### `src/<app_name>/config.py`
-
-Single source of truth for environment config. Imported by every other module; exposes module-level constants loaded from the environment at import time. Raises `RuntimeError` on missing required vars.
-
-```python
-"""Environment config. Fail fast at import if required vars are missing."""
-import os
-import platform
-import sys
-from pathlib import Path
-
-from dotenv import load_dotenv
-
-_repo_root = Path(__file__).resolve().parents[2]
-_env_file = _repo_root / ".env"
-if _env_file.exists():
-    load_dotenv(_env_file, override=False)  # shell env always wins
-
-
-def _require(key: str) -> str:
-    value = os.getenv(key)
-    if not value:
-        raise RuntimeError(
-            f"Required env var {key!r} not set. Copy .env.example to .env "
-            f"(local dev) or set it in your platform's secret store (prod)."
-        )
-    return value
-
-
-def _get(key: str, fallback: str) -> str:
-    return os.getenv(key, fallback)
-
-
-# Required
-MODEL_ID: str = _require("MODEL_ID")
-
-# Optional with defaults
-MODEL_REVISION: str = _get("MODEL_REVISION", "main")
-DEVICE: str = _get("DEVICE", "auto")          # "auto" | "cpu" | "cuda" | "mps"
-MAX_NEW_TOKENS: int = int(_get("MAX_NEW_TOKENS", "512"))
-
-# Optional secrets. For gated models, swap this line for:
-#   HF_TOKEN: str = _require("HF_TOKEN")
-HF_TOKEN: str | None = os.getenv("HF_TOKEN")
-
-# Runtime-detected
-IS_APPLE_SILICON: bool = (
-    sys.platform == "darwin" and platform.machine() == "arm64"
-)
-```
-
-**Gated models:** if the source HF card has `gated: true`, emit `HF_TOKEN = _require("HF_TOKEN")` instead of the optional form.
-
-### `.env.example`
-
-Every `_require` and `_get` key in `config.py` gets a line here with a placeholder default and a comment. Example:
-
-```
-# Required
-MODEL_ID=<org>/<model>
-
-# Optional
-MODEL_REVISION=main
-DEVICE=auto                  # auto | cpu | cuda | mps
-MAX_NEW_TOKENS=512
-
-# Optional unless the model is gated
-HF_TOKEN=
-```
-
-### `src/<app_name>/inference.py` (with platform dispatch)
-
-When the source is a model-based artifact, `inference.py` loads the model and wraps calls. It dispatches between MLX and transformers by reading `config.IS_APPLE_SILICON`. Use the **Variant: text-generation** template from `references/scaffolding-templates.md`. Substitute `<app_name>` and `<mlx-community/...>` (or `None` if no MLX equivalent was found in Step 1).
-
-For non-text-generation pipelines, each variant still dispatches via `config.IS_APPLE_SILICON` and exposes a function named per the page template (`transcribe`, `synthesize`, `transform_audio`, `caption`, `classify`, etc.). Backend call shapes:
-
-| Pipeline | MLX branch | Fallback branch |
+| `library_name` | `pipeline_tag` | Template (in `references/scaffolding-templates.md`) |
 |---|---|---|
-| `image-to-text` (function name `caption(image)`) | `from mlx_vlm import load, generate` → `generate(model, processor, formatted_prompt, image)` | `pipeline("image-to-text", model=config.MODEL_ID)` |
-| `image-text-to-text` (function name `answer_about_image(image, question)`) | `from mlx_vlm import load, generate` → `generate(model, processor, formatted_prompt, image)` (chat template applied to question) | `pipeline("image-text-to-text", model=config.MODEL_ID)` |
-| `automatic-speech-recognition` | `from mlx_audio.stt.utils import load` → `load(id).generate(audio).text` | `pipeline("automatic-speech-recognition", model=config.MODEL_ID)` |
-| `text-to-speech` | `from mlx_audio.tts.utils import load_model`; iterate `load_model(id).generate(text=..., voice=...)` and concatenate each result's `.audio` | `pipeline("text-to-speech", model=config.MODEL_ID)` |
-| `audio-to-audio` | `mlx_audio.sts.<ModelClass>.from_pretrained(id)` + model-specific method (e.g. `.enhance(audio)`, `.separate_long(...)`). **Apple-Silicon-only.** | — (`RuntimeError` on non-Apple-Silicon hosts) |
-| `text-to-image` (mflux family matched) | Inline the matched family's Part B text-to-image snippet from `references/mflux-families.md` verbatim. Expose as `generate_image(prompt, width, height, num_inference_steps, seed) -> PIL.Image.Image`. | `diffusers.FluxPipeline.from_pretrained(config.MODEL_ID)` for `flux` family on non-Apple-Silicon; **no fallback** for Apple-Silicon-only families (`RuntimeError` at `load_model()`). |
-| `image-to-image` (mflux family matched) | Inline the matched family's Part B image-to-image snippet (families with an edit class only — `z_image` has none). Expose as `edit_image(prompt, image_paths: list[str], num_inference_steps, seed) -> PIL.Image.Image`. | `diffusers.FluxImg2ImgPipeline` for `flux` family on non-Apple-Silicon; **no fallback** for Apple-Silicon-only families. |
+| `transformers` | `text-generation`, `conversational` | T2 (`generate_response`) |
+| `transformers` | `text-classification`, `zero-shot-classification`, `token-classification`, `question-answering`, `summarization`, `translation`, `automatic-speech-recognition`, `text-to-speech`, `image-classification`, `object-detection`, `image-to-text`, `image-text-to-text` | T1 (`run_inference`) |
+| `transformers`, `sentence-transformers` | `feature-extraction` | T5 (`embed`) |
+| `diffusers` | `text-to-image` | T3 (`generate_image`) |
+| `diffusers` | `image-to-image` | T4 (`edit_image`) |
+| any | unrecognized | T1 with the General Script UI body |
 
-For `audio-to-audio`, the exact `mlx_audio.sts` class and method depend on the model (SAM-Audio → `separate_long`, MossFormer2 → `enhance`, DeepFilterNet → `enhance`). Step 2 maps the HF card's tags/name to a known `mlx_audio.sts` class; if no mapping exists, the skill reports "no supported STS backend" and emits a General Script page with a manual-wiring TODO instead of scaffolding broken inference code.
+### File 1: `streamlit_app.py`
 
-#### `text-to-image` / `image-to-image` templates (mflux)
+Assemble in this order:
 
-Templates live in `references/scaffolding-templates.md`. Selection at scaffold time depends on `pipeline_tag` and `mflux_family`:
+1. **Module docstring** — one line describing the model and task.
+2. **Imports** — `os`, `streamlit as st`, `dotenv.load_dotenv`, plus library-specific imports from the chosen scaffolding template.
+3. **`load_dotenv()`** — call once at module level so `.env` values populate `os.environ`.
+4. **`MODEL_ID` constant** — hard-coded from Step 1's input URL: `MODEL_ID = "<org>/<model>"`.
+5. **Gated-model gate (when `is_gated: true`)** — after `load_dotenv()`:
 
-| `pipeline_tag` | `mflux_family` | Template |
-|---|---|---|
-| `text-to-image` | `flux` | Variant A: text-to-image |
-| `image-to-image` | `flux` | Variant A: image-to-image |
-| `text-to-image` | `flux2`, `qwen_image`, `fibo`, `z_image` | Variant B: text-to-image |
-| `image-to-image` | `flux2` | Variant B: image-to-image — `flux2` |
-| `image-to-image` | `qwen_image` | Variant B: image-to-image — `qwen_image` |
-| `image-to-image` | `fibo` | Variant B: image-to-image — `fibo` |
-| `image-to-image` | `z_image` | **Reject at Step 1** — `z_image` has no i2i variant. |
-| `text-to-image` or `image-to-image` | `None` | Variant: diffusers-only fallback |
-
-For each Variant A and Variant B `inference.py` template, inline the matched family's Part B snippet from `references/mflux-families.md` (imports + instantiation + per-call kwargs) verbatim into the marked locations. Do not leave `<...>` placeholders in the generated app.
-
-### `src/<app_name>/data.py` and `viz.py`
-
-Only generated when the source contains data transforms or visualizations. Each file holds pure functions (no Streamlit imports) extracted from the source — preserve the original logic verbatim; do not rewrite. Add type annotations on all signatures.
-
-### `src/<app_name>/pages/home.py`
-
-Uses the page body from `references/pipeline-tag-patterns.md` that matches the classified pattern. Every page module exposes `render() -> None`:
-
+<!-- skip-validate -->
 ```python
-"""Home page."""
-import streamlit as st
-
-
-def render() -> None:
-    st.title("...")
-    # Body per references/pipeline-tag-patterns.md for the classified pattern.
-```
-
-When the source has multiple independent flows, generate one page module per flow (`home.py`, `<feature>.py`) and register them all in `streamlit_app.py`'s navigation list.
-
-### `tests/conftest.py`
-
-Use the **Test fixtures** template from `references/scaffolding-templates.md`. Substitute `<app_name>` throughout. Sets required env vars before any test imports the package and provides mocked-model fixtures so inference tests do not touch the network.
-
-### `tests/test_config.py`
-
-```python
-"""Tests for src/<app_name>/config.py."""
-import importlib
-
-import pytest
-
-
-def test_require_raises_when_missing(monkeypatch):
-    monkeypatch.delenv("MODEL_ID", raising=False)
-    # Re-import to trigger fail-fast with the missing var.
-    import <app_name>.config as cfg
-    importlib.reload(cfg)  # will raise
-
-# Note: because config.py raises at import, the assertion happens during reload.
-# Surround with pytest.raises to capture:
-def test_require_raises_explicit(monkeypatch):
-    monkeypatch.delenv("MODEL_ID", raising=False)
-    with pytest.raises(RuntimeError, match="MODEL_ID"):
-        import <app_name>.config as cfg
-        importlib.reload(cfg)
-
-
-def test_get_returns_default(monkeypatch):
-    monkeypatch.delenv("DEVICE", raising=False)
-    import <app_name>.config as cfg
-    importlib.reload(cfg)
-    assert cfg.DEVICE == "auto"
-
-
-def test_is_apple_silicon_detection(monkeypatch):
-    monkeypatch.setattr("sys.platform", "darwin")
-    monkeypatch.setattr("platform.machine", lambda: "arm64")
-    import <app_name>.config as cfg
-    importlib.reload(cfg)
-    assert cfg.IS_APPLE_SILICON is True
-```
-
-### `tests/test_inference.py`
-
-```python
-"""Tests for src/<app_name>/inference.py with mocked model."""
-from <app_name> import inference
-
-
-def test_generate_response_uses_loaded_model(mock_model):
-    out = inference.generate_response("hello", max_new_tokens=5)
-    assert isinstance(out, str)
-```
-
-**For `text-to-image` / `image-to-image` pipelines** (mflux or diffusers-fallback path), emit the following tests instead of the text-generation example above:
-
-```python
-"""Tests for src/<app_name>/inference.py — mflux image pipelines."""
-import pytest
-from <app_name> import inference
-from PIL import Image
-
-
-# text-to-image — emit for every text-to-image scaffold
-def test_generate_image_returns_pil_image(mock_mflux_model):
-    out = inference.generate_image(
-        prompt="a cat", width=64, height=64,
-        num_inference_steps=1, seed=42,
+if not os.getenv("HF_TOKEN"):
+    st.error(
+        f"This model ({MODEL_ID}) is gated. Set HF_TOKEN in .env or run "
+        "`huggingface-cli login` before launching."
     )
-    assert isinstance(out, Image.Image)
-
-
-def test_generate_image_signature_accepts_kwargs(mock_mflux_model):
-    # Sanity check: page templates call generate_image with kwargs.
-    out = inference.generate_image(
-        prompt="x", width=64, height=64,
-        num_inference_steps=1, seed=0,
-    )
-    assert out is not None
-
-
-# image-to-image — emit only for image-to-image scaffolds
-def test_edit_image_accepts_image_paths_list(mock_mflux_model, tmp_path):
-    ref = tmp_path / "ref.png"
-    Image.new("RGB", (64, 64)).save(ref)
-    out = inference.edit_image(
-        prompt="x", image_paths=[str(ref)],
-        num_inference_steps=1, seed=0,
-    )
-    assert isinstance(out, Image.Image)
-
-
-# Apple-Silicon-only guard — emit only for Variant B templates
-def test_load_model_raises_on_non_apple_silicon(monkeypatch):
-    from <app_name> import config
-    monkeypatch.setattr(config, "IS_APPLE_SILICON", False)
-    # Clear the lru_cache so the guard re-runs.
-    inference.load_model.cache_clear()
-    with pytest.raises(RuntimeError, match="Apple Silicon"):
-        inference.load_model()
+    st.stop()
 ```
+6. **`load_model()`** — copy from the chosen scaffolding template, decorated with `@st.cache_resource`.
+7. **Inference function** — copy from the chosen scaffolding template (`run_inference` / `generate_response` / `generate_image` / `edit_image` / `embed`).
+8. **UI body** — copy from the matching `references/pipeline-tag-patterns.md` section, top-level (no function wrapper).
 
-Which tests are emitted depends on the scaffold inputs:
+### File 2: `pyproject.toml`
 
-- `test_generate_image_*` — every text-to-image scaffold.
-- `test_edit_image_accepts_image_paths_list` — every image-to-image scaffold. Families with a single-`image_path` signature (`flux`, `fibo`) still pass here because the test wraps the single path in a list and the inference wrapper unpacks to `image_path=image_paths[0]`.
-- `test_load_model_raises_on_non_apple_silicon` — only when the matched family's Part A row is Apple-Silicon-only (per `references/mflux-families.md` Part A). Not emitted for families with a diffusers fallback (currently only `flux`) or for `mflux_family = None` scaffolds.
-
-`tests/test_app_smoke.py` is unchanged — its `AppTest.from_file(...)` already exercises the new `render()` bodies without needing family-specific fixtures.
-
-### `tests/test_app_smoke.py`
-
-```python
-"""Smoke test: boots the app and runs the default page, asserts no exceptions."""
-from streamlit.testing.v1 import AppTest
-
-
-def test_app_boots():
-    at = AppTest.from_file("streamlit_app.py", default_timeout=30)
-    at.run()
-    assert not at.exception
-```
-
-### `.gitignore`
-
-```
-# Python
-__pycache__/
-*.py[cod]
-.venv/
-venv/
-.env
-
-# Streamlit
-.streamlit/secrets.toml
-
-# Tooling
-.ruff_cache/
-.pytest_cache/
-
-# OS
-.DS_Store
-```
-
-`.streamlit/secrets.toml` is ignored preemptively even though the skill does not create one — prevents accidental commits if the team later adds one for Streamlit Community Cloud deployment.
-
-### `README.md`
-
-The generated README covers setup, env vars, license, and gated-model instructions. Template:
-
-````markdown
-# <App Name>
-
-<One-line description extracted from the source>
-
-<When `source_url` is non-None, insert: **Source:** [<source_url>](<source_url>) (`<source_ref>`). Omit the entire line otherwise.>
-
-## Setup
+Generated by `uv init --name <app-name>`. After init:
 
 ```bash
-uv sync
-cp .env.example .env      # then edit .env with your values
-streamlit run streamlit_app.py
-```
-
-## Environment variables
-
-| Name             | Required  | Default | Description                                       |
-|------------------|-----------|---------|---------------------------------------------------|
-| `MODEL_ID`       | yes       | —       | HuggingFace model identifier                      |
-| `MODEL_REVISION` | no        | `main`  | Model revision / branch / tag                     |
-| `DEVICE`         | no        | `auto`  | `auto` \| `cpu` \| `cuda` \| `mps`                |
-| `MAX_NEW_TOKENS` | no        | `512`   | Max tokens generated per call                     |
-| `HF_TOKEN`       | see notes | —       | Required for gated / private models; otherwise optional |
-
-## License & Commercial Use
-
-**Model:** `<org>/<model>` — license: `<license-identifier>`
-
-<When the license is in license-flags.md as restrictive, insert the flag text here>
-
-## Gated model
-
-<Included when the source model card has gated: true>
-Run `huggingface-cli login` on the host before first use, OR set `HF_TOKEN` in `.env` / your platform's secret store. Without a token, the app will fail fast at startup with a clear error.
-````
-
-## Step 6: Initialize and install via `uv`
-
-```bash
-pip install uv --break-system-packages   # if uv is not already available
-
-uv init --name <app-name> --package
-uv add streamlit python-dotenv huggingface_hub watchdog
-uv add "mlx-lm;platform_machine=='arm64' and sys_platform=='darwin'"
-uv add "transformers;platform_machine!='arm64' or sys_platform!='darwin'"
+uv add streamlit python-dotenv huggingface_hub
+# Plus library-specific deps per the routing table:
+# - transformers (T1, T2):
+uv add transformers torch
+# - For ASR / TTS (transformers pipeline):
+uv add "transformers[audio]" scipy
+# - For diffusers (T3, T4):
+uv add diffusers transformers torch accelerate pillow
+# - For sentence-transformers (T5):
+uv add sentence-transformers
+# Dev dependencies (always):
 uv add --dev ruff ty pytest
 ```
 
-`watchdog` is required by the `[server].fileWatcherType = "watchdog"` setting in the `.streamlit/config.toml` template (Step 5).
+The exact `uv add` calls depend on the matched template — emit only the rows that apply. Add `[tool.pytest.ini_options]` with `testpaths = ["."]` and `[tool.ruff]` with `select = ["E", "F", "I"]` to `pyproject.toml`.
 
-Versions are not pinned on the command line — `uv add` resolves the current latest at skill-run time and writes the resolved specifier to `pyproject.toml`.
+### File 3: `.env.example`
 
-**Pattern-specific additional deps:**
+Always emit this file. Template:
 
-| Pattern                              | Add                                    |
-|--------------------------------------|----------------------------------------|
-| Text generation (non-transformers)   | `accelerate` (transformers branch)     |
-| `text-to-image` / `image-to-image`, `mflux_family` matched, with diffusers fallback (`flux`) | `"mflux;platform_machine=='arm64' and sys_platform=='darwin'"`, `"diffusers;platform_machine!='arm64' or sys_platform!='darwin'"`, `"accelerate;platform_machine!='arm64' or sys_platform!='darwin'"` |
-| `text-to-image` / `image-to-image`, `mflux_family` matched, Apple-Silicon-only (per `references/mflux-families.md` Part A) | `"mflux;platform_machine=='arm64' and sys_platform=='darwin'"` — **no fallback** |
-| Image / vision / diffusion (no `mflux_family` match) | `diffusers`, `accelerate`, `pillow`    |
-| Automatic speech recognition         | `"mlx-audio;platform_machine=='arm64' and sys_platform=='darwin'"`, `"transformers[audio];platform_machine!='arm64' or sys_platform!='darwin'"` |
-| Text to speech                       | `"mlx-audio;platform_machine=='arm64' and sys_platform=='darwin'"`, `"transformers[audio];platform_machine!='arm64' or sys_platform!='darwin'"` |
-| Audio to audio                       | `"mlx-audio;platform_machine=='arm64' and sys_platform=='darwin'"` — **no fallback** (Apple-Silicon-only) |
-| Vision-language                      | `"mlx-vlm;platform_machine=='arm64' and sys_platform=='darwin'"` |
-| Embeddings                           | `sentence-transformers`                |
-| Data processing                      | `pandas`, `pyarrow`                    |
-| Visualization                        | `plotly`                               |
+```
+# Optional. Required for gated models (e.g. meta-llama/*, mistralai/*).
+# Get a token at https://huggingface.co/settings/tokens.
+HF_TOKEN=
+```
 
-Add `[tool.pytest.ini_options]` to `pyproject.toml` with `testpaths = ["tests"]` and `pythonpath = ["src"]`. Configure `[tool.ruff]` with import-sorting (`select = ["E", "F", "I"]`). Configure `[tool.ty]` with `strict = ["src/"]`.
+### File 4: `test_streamlit_app.py`
 
-## Step 7: Code-quality gate
+Copy template T6 from `references/scaffolding-templates.md` and adapt the body of `test_inference_function_returns_expected_type` per the in-use scaffolding template — the comment hints inside T6 spell out each adaptation explicitly.
 
-Run these four commands, in order. All must pass before reporting the scaffold as complete.
+## Step 5: Code-quality gate
+
+Run, in order. All four must pass before reporting the scaffold as complete.
 
 ```bash
-uv run ruff check --fix .
-uv run ruff format .
-uv run ty check src/ tests/
-uv run pytest -v
+uv run ruff check --fix streamlit_app.py test_streamlit_app.py
+uv run ruff format streamlit_app.py test_streamlit_app.py
+uv run ty check streamlit_app.py
+uv run pytest test_streamlit_app.py -v
 ```
 
-Fix failures by adjusting the generated code or fixtures. Do not weaken tests to make them pass. If the smoke test fails because a required env var is missing, add the var to `tests/conftest.py`'s startup block.
+Fix failures by adjusting the generated code. Do not weaken the test to make it pass.
 
-## Step 8: Report to user
+## Step 6: Report to the user
 
-**Source preamble (conditional):** when `source_url` is non-None, emit the following on a single line before the numbered items, followed by a blank line:
+Emit exactly two items, plus a third when the model is gated.
 
-```
-Source: <source_url> (ref: <source_ref>)
-```
+**Always:**
 
-When `source_ref` is None, omit the `(ref: …)` parenthetical. When `source_url` is None (HF-card / script / notebook paths), omit the entire preamble — no empty header.
-
-Surface:
-
-1. **Files created**, grouped by purpose: app code, config, tests, project files.
-2. **Live docs verified.** List the URLs fetched from each index, e.g.:
-
-   ```
-   Streamlit docs (8 fetched, all required):
-     - https://docs.streamlit.io/develop/concepts/multipage-apps/overview
-     - ...
-   HuggingFace docs (3 fetched, all required):
-     - ...
-   ```
-
-   Cross-check against the **Verification list** sections in `references/streamlit-docs-index.md` and `references/huggingface-docs-index.md`. If any "Always" URL is missing, or any conditional URL whose trigger applies was skipped, return to Step 4 — do not report the scaffold as complete.
-3. **Chosen model variant** — if MLX resolution returned a match, show `mlx-community/<variant>` alongside the original `<org>/<model>`; otherwise note "no MLX equivalent found, app uses transformers on all platforms."
-
-   **Sibling models (conditional)** — when Step 2's `siblings` list is non-empty, append. Wording depends on input type: HF-card inputs benefit from a `pipeline_tag`-filtered list ("for this task"); code/notebook inputs cannot verify the pipeline tag of siblings and surface them with a softer caveat.
-
-   For HF-card inputs:
-   ```
-   Other <org> models for this task (consider if you want something newer/different):
-     - <org>/<sibling1>
-     - <org>/<sibling2>
-   ```
-
-   For code/notebook inputs:
-   ```
-   Other models from <org> (pipeline_tag not verified, may differ from input):
-     - <org>/<sibling1>
-     - <org>/<sibling2>
-   ```
-
-   Omit entirely when `siblings` is empty — no empty header.
-
-   **mflux backend (conditional)** — when `mflux_family` is non-`None`, emit (in place of the mlx-community line, which is skipped for text-to-image / image-to-image per Step 1):
-
-   ```
-   Apple Silicon backend: mflux (<family>). Non-Apple-Silicon fallback: <diffusers class or "none — Apple-Silicon-only">.
-   ```
-
-   When the input is an HF model card with `pipeline_tag ∈ {text-to-image, image-to-image}` and `mflux_family = None`, emit instead: *"No mflux family matched — app will use diffusers on all platforms."* (Script / notebook / GitHub URL inputs skip both mflux-related lines because `pipeline_tag` is not in the IR for those input types.)
-4. **Apple-Silicon-only warning (when applicable)** — emit one of the two messages below depending on the trigger:
-   - If the classified pipeline is `audio-to-audio`: *"This scaffold requires Apple Silicon at runtime. On non-Apple-Silicon hosts (including Intel Macs), `uv sync` will not install `mlx-audio` and the app will error at model load."*
-   - If `mflux_family` is an Apple-Silicon-only family (per `references/mflux-families.md` Part A): *"This scaffold requires Apple Silicon at runtime. On non-Apple-Silicon hosts (including Intel Macs), `uv sync` will not install `mflux` and the app will error at model load."*
-
-   **Install-size note (when `mflux_family` is non-`None`):** `uv sync` on Apple Silicon installs ~2–3 GB of model-inference dependencies (mflux pulls `torch`, `opencv-python`, `sentencepiece`, etc.); first run may take several minutes. Silent otherwise.
-5. **License + commercial-use flag** — from `references/license-flags.md`, if the model's license matches a flagged entry. Quote the flag text inline.
-6. **Gated-model setup** — when `is_gated` is `true` in the IR (only HF-card inputs set this today; script / notebook / GitHub inputs leave it `false`), show the `huggingface-cli login` command and the alternative `HF_TOKEN` path.
-7. **Exact local-run command:**
+1. **Files created.** List the four paths.
+2. **Run command.**
 
    ```bash
    uv sync
-   cp .env.example .env
+   cp .env.example .env       # then add your HF_TOKEN if needed
    streamlit run streamlit_app.py
    ```
 
-8. **Non-goals reminder** — a short list of things the scaffold does NOT include (auth, Docker, CI, DB, observability), explicitly marked as the team's responsibility.
+**Conditional (when `is_gated: true`):**
+
+3. **Gated-model setup.** *"This model is gated. Either run `huggingface-cli login` on the host before first launch, OR set `HF_TOKEN=` in `.env`. Without a token, the app fails fast at startup with a clear error."*
 
 ## Output checklist
 
-- [ ] Full directory tree populated (see Step 5)
-- [ ] `pyproject.toml` declares MLX and transformers with correct environment markers
-- [ ] `.env.example` covers every `_require` and `_get` key in `config.py`
+- [ ] Four files created: `streamlit_app.py`, `pyproject.toml`, `.env.example`, `test_streamlit_app.py`
+- [ ] `streamlit_app.py` has `@st.cache_resource` on `load_model`
+- [ ] `MODEL_ID` is hard-coded as a module-level constant (not env-driven)
+- [ ] If `is_gated`, a `st.error` + `st.stop` gate runs before any model load
+- [ ] `pyproject.toml` declares `streamlit`, `python-dotenv`, `huggingface_hub`, plus library-specific runtime deps and `ruff` / `ty` / `pytest` as dev deps
+- [ ] `.env.example` always present, contains `HF_TOKEN=` line
 - [ ] `ruff check --fix`, `ruff format`, `ty check`, and `pytest` all pass clean
-- [ ] `README.md` documents setup, env vars, license, gated-model instructions
-- [ ] Step 8 report emitted per source-type conditions
+- [ ] Step 6 report has 2 always-present items (or 3 when gated)
 
 ## References
 
-- `references/streamlit-docs-index.md` — canonical Streamlit docs URLs for live fetches
-- `references/huggingface-docs-index.md` — canonical HuggingFace docs URLs (under `huggingface.co/docs`) for live fetches
-- `references/pipeline-tag-patterns.md` — HF pipeline_tag → UI pattern catalog
-- `references/license-flags.md` — commercial-use flags for model licenses
+- `references/pipeline-tag-patterns.md` — UI body templates indexed by `pipeline_tag`
+- `references/scaffolding-templates.md` — `load_model` + inference-function templates indexed by `library_name` × `pipeline_tag`
