@@ -29,7 +29,7 @@ Long lookup tables (catalogs, mappings) can live in a `<skill-name>/references/`
 
 ## App-Builder Skills
 
-`dash-app-builder` and `gradio-app-builder` share a single-file-app workflow. `streamlit-app-builder` produces a production-structured package instead. `dash-app-builder` additionally supports an Analytics Dashboard pattern with `dash-bootstrap-components`.
+All three app-builders share a single-file-app workflow that produces a `<framework>_app.py` plus tests, `pyproject.toml`, and `.env.example`. `dash-app-builder` additionally supports an Analytics Dashboard pattern with `dash-bootstrap-components`.
 
 ### `dash-app-builder` and `gradio-app-builder`
 
@@ -56,29 +56,40 @@ uv run pytest test_<app>.py -v
 
 ### `streamlit-app-builder`
 
-**Workflow:** Analyze source (script / notebook / HF model card URL / GitHub URL) → Fetch live Streamlit and HuggingFace docs → Classify UI pattern → Scaffold production package → Code quality → Testing
+**Workflow:** Identify HF model card URL → Classify UI pattern by `pipeline_tag` → Scaffold single-file app → Code quality → Testing
 
-GitHub URL inputs support two shapes: blob-`.py` URL and repo root (README's first `python`/`py` fenced block extracted). Set `GH_TOKEN` in the environment for private repos and the 5000/hr authenticated quota. See `streamlit-app-builder/SKILL.md` Step 1 for the full classification, rejection rules, and IR threading.
+**Inputs:** HuggingFace model card URL only (`https://huggingface.co/<org>/<model>`). Other inputs (scripts, notebooks, GitHub URLs) are rejected with a redirect to `dash-app-builder` or `gradio-app-builder`.
 
 **Outputs:**
-- `streamlit_app.py` — `st.navigation` router entrypoint
-- `src/<app_name>/` — package with `config.py`, `inference.py` (MLX / transformers / diffusers dispatch; chat streaming), `data.py`, `viz.py`, and `pages/`
-- `tests/` — pytest unit tests plus a `streamlit.testing.v1.AppTest` smoke test
-- `.streamlit/config.toml` — Streamlit server and theme config; sets `fileWatcherType = "watchdog"` for native filesystem watching
-- `pyproject.toml` — uv-managed, platform-conditional deps: `mlx-lm` / `mlx-vlm` / `mlx-audio` / `mflux` on Apple Silicon, `transformers` / `diffusers` elsewhere (`audio-to-audio` is Apple-Silicon-only; `mflux` families other than `flux` are Apple-Silicon-only)
-- `.env.example` — documents every env var the app reads
+- `streamlit_app.py` — single-file app: env loading, `MODEL_ID` const, gated-model gate, `@st.cache_resource`-decorated `load_model`, inference function, top-level UI body
+- `test_streamlit_app.py` — pytest unit test for the inference function (mocked model)
+- `pyproject.toml` — uv-managed
+- `.env.example` — documents `HF_TOKEN` for gated models
 
-**Live-docs verification:** Step 4 fetches canonical pages from `docs.streamlit.io` and `huggingface.co/docs` (catalogued in `references/streamlit-docs-index.md` and `references/huggingface-docs-index.md`); Step 8 enumerates fetched URLs and cross-checks against the **Verification list** sections in those index files.
+**Toolchain:**
+```bash
+pip install uv --break-system-packages  # if uv is not already available
+
+uv init --name <app-name>
+uv add streamlit python-dotenv huggingface_hub  # plus library-specific deps from SKILL.md routing table
+uv add --dev ruff ty pytest
+
+uv run ruff check --fix streamlit_app.py test_streamlit_app.py
+uv run ruff format streamlit_app.py test_streamlit_app.py
+uv run ty check streamlit_app.py
+uv run pytest test_streamlit_app.py -v
+```
 
 **Repository structure:**
-- `streamlit-app-builder/references/scaffolding-templates.md` — `inference.py` and `conftest.py` template variants (per-pipeline-tag, per-`mflux_family`), kept separate from the workflow prose in `SKILL.md` Step 5.
-- `streamlit-app-builder/tests/` — static validator for the Python code blocks embedded in this skill's Markdown files (`ast.parse`, `ruff check --select E,F,I`, mflux routing-regex sanity). Run `uv run pytest` from that directory before committing changes to skill templates.
+- `streamlit-app-builder/references/scaffolding-templates.md` — `load_model` + inference-function templates (T1-T5) plus the `test_streamlit_app.py` skeleton (T6).
+- `streamlit-app-builder/references/pipeline-tag-patterns.md` — UI body templates indexed by `pipeline_tag`.
+- `streamlit-app-builder/tests/` — static validator (`ast.parse` + `ruff check --select E,F,I`) for the Python blocks embedded in this skill's Markdown files. Run `uv run pytest` from that directory before committing changes to skill templates.
 
 See `streamlit-app-builder/SKILL.md` for the full workflow.
 
 ### Shared code principles
 
-- Wrap original logic — don't rewrite it (streamlit distributes by concern across `src/<app_name>/` modules)
+- Wrap original logic — don't rewrite it
 - Load config from `.env` via `python-dotenv`; always generate `.env.example`
 - Cache model loading with `@lru_cache(maxsize=1)`
 - Test underlying Python functions only, not UI callbacks or wiring
