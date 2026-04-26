@@ -1,16 +1,15 @@
 # HuggingFace `pipeline_tag` → UI Pattern Catalog
 
-When the input is an HF model card, the skill reads `pipeline_tag` from `https://huggingface.co/api/models/<id>` (or the YAML frontmatter of `README.md` as fallback) and selects a UI pattern from this catalog. Each entry specifies the primary Streamlit widgets and a minimal page body.
+When the input is an HF model card, the skill reads `pipeline_tag` from `https://huggingface.co/api/models/<id>` (or the YAML frontmatter of `README.md` as fallback) and selects a UI pattern from this catalog. Each entry specifies the primary Streamlit widgets and an inline UI body. The UI body is pasted directly into `streamlit_app.py` after the `load_model()` and inference-function definitions from `references/scaffolding-templates.md` (the inference function name varies per scaffolding template — `run_inference`, `generate_response`, `generate_image`, `edit_image`, or `embed`).
+
+The `<!-- skip-validate -->` marker before each block tells the static validator to skip parsing — these are fragments that depend on symbols defined in the surrounding assembled file.
 
 ## Text generation / chat
 
-`pipeline_tag`: `text-generation`, `conversational`
+`pipeline_tag`: `text-generation`, `conversational`. Use scaffolding template T2 (`generate_response`).
 
+<!-- skip-validate -->
 ```python
-# Chat page body
-import streamlit as st
-from <app_name>.inference import generate_response_stream
-
 st.title("Chat")
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -23,290 +22,226 @@ if prompt := st.chat_input("Message"):
     with st.chat_message("user"):
         st.markdown(prompt)
     with st.chat_message("assistant"):
-        response = st.write_stream(generate_response_stream(prompt))
+        response = generate_response(prompt, max_new_tokens=256)
+        st.markdown(response)
     st.session_state.messages.append({"role": "assistant", "content": response})
 ```
 
 ## Text classification
 
-`pipeline_tag`: `text-classification`, `zero-shot-classification`
+`pipeline_tag`: `text-classification`, `zero-shot-classification`. Use template T1 (`run_inference`).
 
+<!-- skip-validate -->
 ```python
-import streamlit as st
-from <app_name>.inference import classify
-
 st.title("Classify Text")
 text = st.text_area("Input", height=200)
 if st.button("Classify") and text:
-    result = classify(text)
+    result = run_inference(text)
     st.json(result)
 ```
 
 ## Token classification (NER)
 
-`pipeline_tag`: `token-classification`
+`pipeline_tag`: `token-classification`. Use template T1.
 
+<!-- skip-validate -->
 ```python
-import streamlit as st
-from <app_name>.inference import extract_entities
-
 st.title("Entity Recognition")
 text = st.text_area("Input", height=200)
 if st.button("Extract") and text:
-    entities = extract_entities(text)
+    entities = run_inference(text)
     st.write(entities)
-    # Render highlighted spans via markdown with inline HTML,
-    # or use a third-party component if preferred.
 ```
 
 ## Question answering
 
-`pipeline_tag`: `question-answering`
+`pipeline_tag`: `question-answering`. Use template T1; call as `run_inference(question=..., context=...)`.
 
+<!-- skip-validate -->
 ```python
-import streamlit as st
-from <app_name>.inference import answer
-
 st.title("Question Answering")
 context = st.text_area("Context", height=250)
 question = st.text_input("Question")
 if st.button("Answer") and context and question:
-    st.write(answer(context=context, question=question))
+    st.write(run_inference(question=question, context=context))
 ```
 
 ## Summarization / translation
 
-`pipeline_tag`: `summarization`, `translation`
+`pipeline_tag`: `summarization`, `translation`. Use template T1.
 
+<!-- skip-validate -->
 ```python
-import streamlit as st
-from <app_name>.inference import transform_text
-
 st.title("Transform Text")
 src = st.text_area("Input", height=250)
 if st.button("Run") and src:
-    st.text_area("Output", transform_text(src), height=250)
+    result = run_inference(src)
+    # Pipeline returns [{"summary_text": "..."}] for summarization,
+    # [{"translation_text": "..."}] for translation.
+    output = result[0].get("summary_text") or result[0].get("translation_text") or str(result)
+    st.text_area("Output", output, height=250)
 ```
 
 ## Feature extraction (embeddings)
 
-`pipeline_tag`: `feature-extraction`
+`pipeline_tag`: `feature-extraction`. Use template T5 (`embed`) — `sentence-transformers` is the right backend for most embedding models.
 
+<!-- skip-validate -->
 ```python
-import streamlit as st
-from <app_name>.inference import embed
-
 st.title("Embeddings")
 text = st.text_area("Input", height=200)
 if st.button("Embed") and text:
     vec = embed(text)
     st.write(f"Dim: {len(vec)}")
-    st.line_chart(vec)  # quick visualization
+    st.line_chart(vec)
 ```
 
 ## Automatic speech recognition (ASR)
 
-`pipeline_tag`: `automatic-speech-recognition`
+`pipeline_tag`: `automatic-speech-recognition`. Use template T1.
 
+<!-- skip-validate -->
 ```python
-import streamlit as st
-from <app_name>.inference import transcribe
-
 st.title("Transcribe Audio")
 audio = st.audio_input("Record") or st.file_uploader(
     "Upload", type=["wav", "mp3", "m4a", "flac"]
 )
 if audio and st.button("Transcribe"):
-    text = transcribe(audio)
-    st.text_area("Transcript", text, height=200)
+    audio_bytes = audio.getvalue() if hasattr(audio, "getvalue") else audio.read()
+    result = run_inference(audio_bytes)
+    st.text_area("Transcript", result.get("text", str(result)), height=200)
 ```
 
 ## Text to speech
 
-`pipeline_tag`: `text-to-speech`
+`pipeline_tag`: `text-to-speech`. Use template T1.
 
+<!-- skip-validate -->
 ```python
-import streamlit as st
-from <app_name>.inference import synthesize
+import io
+
+import scipy.io.wavfile
 
 st.title("Text to Speech")
 text = st.text_area("Input", height=150)
 if st.button("Speak") and text:
-    audio_bytes = synthesize(text)
-    st.audio(audio_bytes, format="audio/wav")
+    result = run_inference(text)
+    # transformers.pipeline("text-to-speech") returns {"audio": np.ndarray, "sampling_rate": int}
+    buf = io.BytesIO()
+    scipy.io.wavfile.write(buf, result["sampling_rate"], result["audio"].squeeze())
+    st.audio(buf.getvalue(), format="audio/wav")
 ```
 
-## Audio transform (speech-to-speech, separation, enhancement)
-
-`pipeline_tag`: `audio-to-audio`
-
-**Apple-Silicon-only.** The generated `inference.py` raises a clear `RuntimeError` on non-Apple-Silicon hosts.
-
-```python
-import streamlit as st
-from <app_name>.inference import transform_audio
-
-st.title("Transform Audio")
-audio = st.audio_input("Record") or st.file_uploader(
-    "Upload", type=["wav", "mp3", "m4a", "flac"]
-)
-if audio and st.button("Transform"):
-    result = transform_audio(audio)
-    # Single-output models (enhancement / denoising) return bytes.
-    # Multi-output models (source separation) return dict[str, bytes].
-    if isinstance(result, dict):
-        for label, audio_bytes in result.items():
-            st.subheader(label)
-            st.audio(audio_bytes, format="audio/wav")
-    else:
-        st.audio(result, format="audio/wav")
-```
-
-The shape of `transform_audio`'s return is decided at scaffold time based on the HF model card: `separate_long`-style models return a dict of labeled outputs; `enhance`-style models return a single `bytes`. If the card doesn't map to a known `mlx_audio.sts` class, the skill emits a General Script page with a manual-wiring TODO instead of this template.
+(`scipy` is added to dependencies for TTS apps.)
 
 ## Image classification / object detection
 
-`pipeline_tag`: `image-classification`, `object-detection`
+`pipeline_tag`: `image-classification`, `object-detection`. Use template T1.
 
+<!-- skip-validate -->
 ```python
-import streamlit as st
-from <app_name>.inference import classify_image
-
 st.title("Classify Image")
 img = st.file_uploader("Upload", type=["png", "jpg", "jpeg", "webp"])
 if img and st.button("Classify"):
     st.image(img)
-    st.json(classify_image(img))
+    st.json(run_inference(img))
 ```
 
-## Image to text (captioning, VQA)
+## Image to text (captioning)
 
-`pipeline_tag`: `image-to-text`
+`pipeline_tag`: `image-to-text`. Use template T1.
 
+<!-- skip-validate -->
 ```python
-import streamlit as st
-from <app_name>.inference import caption
-
 st.title("Image Captioning")
 img = st.file_uploader("Upload", type=["png", "jpg", "jpeg", "webp"])
 if img and st.button("Caption"):
     st.image(img)
-    st.write(caption(img))
+    result = run_inference(img)
+    st.write(result[0].get("generated_text", str(result)) if result else "")
 ```
 
 ## Image-text-to-text (visual question answering, multimodal chat)
 
-`pipeline_tag`: `image-text-to-text`
+`pipeline_tag`: `image-text-to-text`. Use template T1. Argument names vary by model — `text` and `images` are the most common keywords; check the model card.
 
+<!-- skip-validate -->
 ```python
-import streamlit as st
-from <app_name>.inference import answer_about_image
+from PIL import Image
 
 st.title("Image + Text")
 img = st.file_uploader("Upload", type=["png", "jpg", "jpeg", "webp"])
 question = st.text_area("Question about the image", height=100)
 if st.button("Answer", disabled=not (img and question.strip())):
     st.image(img)
-    st.write(answer_about_image(image=img, question=question))
+    image = Image.open(img)
+    result = run_inference(text=question, images=image)
+    st.write(result[0].get("generated_text") if isinstance(result, list) else result)
 ```
-
-Inference function signature: `answer_about_image(image, question: str) -> str`. MLX backend: `mlx_vlm.generate(model, processor, formatted_prompt, image)` with the chat template applied to `question`. Fallback: `pipeline("image-text-to-text", model=config.MODEL_ID)` with both image and question kwargs.
 
 ## Text to image
 
-`pipeline_tag`: `text-to-image`
+`pipeline_tag`: `text-to-image`. Use template T3 (`generate_image`).
 
-Scaffold-time substitution: the `value=` arguments on the width/height/steps sliders below are replaced with the defaults from the matched family's `references/mflux-families.md` Part B block (e.g., FLUX.2 Klein: `steps=4, width=1024, height=560`). When `mflux_family` is `None` (no Part A match), use generic defaults `(width=1024, height=1024, steps=20, seed=42)`.
-
+<!-- skip-validate -->
 ```python
-"""Text-to-image page."""
-import streamlit as st
-from <app_name> import inference
-
-
-def render() -> None:
-    st.title("Text-to-Image")
-    prompt = st.text_area("Prompt", height=100)
-    col1, col2 = st.columns(2)
-    with col1:
-        width = st.slider("Width", 256, 2048, <default_width>, 64)
-        steps = st.slider("Steps", 1, 100, <default_steps>)
-    with col2:
-        height = st.slider("Height", 256, 2048, <default_height>, 64)
-        seed = st.number_input("Seed", value=42, step=1)
-    if st.button("Generate", type="primary", disabled=not prompt.strip()):
-        with st.spinner("Generating..."):
-            image = inference.generate_image(
-                prompt=prompt, width=width, height=height,
-                num_inference_steps=steps, seed=int(seed),
-            )
-        st.image(image)
+st.title("Text-to-Image")
+prompt = st.text_area("Prompt", height=100)
+col1, col2 = st.columns(2)
+with col1:
+    steps = st.slider("Steps", 1, 100, 20)
+with col2:
+    seed = st.number_input("Seed", value=42, step=1)
+if st.button("Generate", type="primary", disabled=not prompt.strip()):
+    with st.spinner("Generating..."):
+        image = generate_image(prompt=prompt, num_inference_steps=steps, seed=int(seed))
+    st.image(image)
 ```
 
 ## Image to image
 
-`pipeline_tag`: `image-to-image`
+`pipeline_tag`: `image-to-image`. Use template T4 (`edit_image`).
 
-Scaffold-time substitution: the `value=` argument on the steps slider is replaced with the matched family's `i2i` default from `references/mflux-families.md` Part B (e.g., Qwen-Image-Edit: `steps=30`). Width and height are not exposed as sliders — mflux edit variants either derive output dimensions from the reference image (Flux2KleinEdit, FIBOEdit) or accept width/height in `inference.edit_image`'s family-specific path (Qwen-Image-Edit, Flux1Kontext). The scaffold consumer decides per family whether to pass `width` / `height` into the inference call.
-
+<!-- skip-validate -->
 ```python
-"""Image-to-image page."""
-import tempfile
-from pathlib import Path
+from PIL import Image
 
-import streamlit as st
-from <app_name> import inference
-
-
-def render() -> None:
-    st.title("Image-to-Image")
-    uploaded = st.file_uploader(
-        "Reference image(s)",
-        type=["jpg", "jpeg", "png", "webp"],
-        accept_multiple_files=True,
-    )
-    prompt = st.text_area("Prompt", height=100)
-    col1, col2 = st.columns(2)
-    with col1:
-        steps = st.slider("Steps", 1, 100, <default_steps>)
-    with col2:
-        seed = st.number_input("Seed", value=42, step=1)
-    if st.button("Generate", type="primary",
-                 disabled=not (prompt.strip() and uploaded)):
-        with tempfile.TemporaryDirectory() as td:
-            image_paths = []
-            for up in uploaded:
-                p = Path(td) / up.name
-                p.write_bytes(up.read())
-                image_paths.append(str(p))
-            with st.spinner("Generating..."):
-                image = inference.edit_image(
-                    prompt=prompt,
-                    image_paths=image_paths,
-                    num_inference_steps=steps,
-                    seed=int(seed),
-                )
-        st.image(image)
+st.title("Image-to-Image")
+uploaded = st.file_uploader(
+    "Reference image", type=["jpg", "jpeg", "png", "webp"]
+)
+prompt = st.text_area("Prompt", height=100)
+col1, col2 = st.columns(2)
+with col1:
+    steps = st.slider("Steps", 1, 100, 20)
+with col2:
+    seed = st.number_input("Seed", value=42, step=1)
+if st.button("Generate", type="primary",
+             disabled=not (prompt.strip() and uploaded)):
+    reference = Image.open(uploaded)
+    with st.spinner("Generating..."):
+        image = edit_image(
+            prompt=prompt, image=reference,
+            num_inference_steps=steps, seed=int(seed),
+        )
+    st.image(image)
 ```
 
 ## Fallback: General Script
 
-`pipeline_tag`: missing / unrecognized / not applicable (code-based input without a clear pattern)
+`pipeline_tag` missing or unrecognized. Use template T1 with `run_inference(input)`.
 
+<!-- skip-validate -->
 ```python
-import pandas as pd
-import streamlit as st
-from <app_name>.inference import run  # or equivalent entry from source
-
 st.title("Run")
-# TODO: replace with widgets that expose run()'s parameters
-param = st.text_input("Parameter")
+param = st.text_input("Input")
 if st.button("Run") and param:
-    result = run(param)
-    if isinstance(result, pd.DataFrame):
-        st.dataframe(result)
-    elif isinstance(result, (dict, list)):
-        st.json(result)
-    else:
-        st.write(result)
+    result = run_inference(param)
+    st.json(result) if isinstance(result, (dict, list)) else st.write(result)
 ```
+
+## Rejected pipeline tags
+
+| `pipeline_tag` | Rejection message |
+|---|---|
+| `audio-to-audio` | *"audio-to-audio has no clean transformers pipeline. This skill can't scaffold a working prototype for audio-to-audio models. For source separation or speech enhancement, use the model's reference implementation directly."* |
