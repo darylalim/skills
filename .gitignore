@@ -11,7 +11,8 @@ __pycache__/
 .ruff_cache/
 .ty_cache/
 
-# Local (env, worktrees, untracked artifacts)
+# Local (env, settings, worktrees, untracked artifacts)
+.claude/
 .env
 .worktrees/
 docs/

@@ -83,7 +83,7 @@ uv run pytest test_streamlit_app.py -v
 **Repository structure:**
 - `streamlit-app-builder/references/scaffolding-templates.md` — `load_model` + inference-function templates (T1-T5) plus the `test_streamlit_app.py` skeleton (T6).
 - `streamlit-app-builder/references/pipeline-tag-patterns.md` — UI body templates indexed by `pipeline_tag`.
-- `streamlit-app-builder/tests/` — static validator (`ast.parse` + `ruff check --select E,F,I`) for the Python blocks embedded in this skill's Markdown files. Run `uv run pytest` from that directory before committing changes to skill templates.
+- `streamlit-app-builder/tests/` — static validator (`ast.parse` + `ruff check --select E,F,I`) for embedded Python blocks, plus structural-consistency tests (routing-table coverage, template-name references, rejection-message sync, skip-validate marker count). Run `uv run pytest` from that directory before committing changes to skill templates.
 
 See `streamlit-app-builder/SKILL.md` for the full workflow.
 
@@ -91,5 +91,5 @@ See `streamlit-app-builder/SKILL.md` for the full workflow.
 
 - Wrap original logic — don't rewrite it
 - Load config from `.env` via `python-dotenv`; always generate `.env.example`
-- Cache model loading with `@lru_cache(maxsize=1)`
+- Cache model loading: `@lru_cache(maxsize=1)` (dash, gradio) or `@st.cache_resource` (streamlit)
 - Test underlying Python functions only, not UI callbacks or wiring
