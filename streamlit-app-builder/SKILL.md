@@ -72,6 +72,8 @@ The input MUST be an HF model card URL of the shape `https://huggingface.co/<org
 
 `library_name` resolution: prefer the API's `library_name` field. If the field is missing, default to `transformers`. If the API's `library_name == "sentence-transformers"` OR the README explicitly recommends `sentence-transformers` (look for `from sentence_transformers import` in the README's code snippets), set `library_name = "sentence-transformers"` regardless of the API value.
 
+`pipeline_tag` normalization: when `library_name` resolves to `sentence-transformers`, set `pipeline_tag = "feature-extraction"` regardless of the API's value. HF embedding models commonly report `"sentence-similarity"` or `"feature-extraction"` interchangeably, and both route to T5 (`embed`) in Step 4.
+
 ## Step 3: Classify the UI pattern
 
 Look up `pipeline_tag` in `references/pipeline-tag-patterns.md`. The matching section's UI body is what gets pasted into `streamlit_app.py` after the inference function.
