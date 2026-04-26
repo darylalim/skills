@@ -71,7 +71,7 @@ uv run pytest test_<app>.py -v
 pip install uv --break-system-packages  # if uv is not already available
 
 uv init --name <app-name>
-uv add streamlit python-dotenv huggingface_hub  # plus library-specific deps from SKILL.md routing table
+uv add streamlit python-dotenv  # plus library-specific deps from SKILL.md routing table
 uv add --dev ruff ty pytest
 
 uv run ruff check --fix streamlit_app.py test_streamlit_app.py
@@ -83,7 +83,7 @@ uv run pytest test_streamlit_app.py -v
 **Repository structure:**
 - `streamlit-app-builder/references/scaffolding-templates.md` — `load_model` + inference-function templates (T1-T5) plus the `test_streamlit_app.py` skeleton (T6).
 - `streamlit-app-builder/references/pipeline-tag-patterns.md` — UI body templates indexed by `pipeline_tag`.
-- `streamlit-app-builder/tests/` — static validator (`ast.parse` + `ruff check --select E,F,I`) for embedded Python blocks, plus structural-consistency tests (routing-table coverage, template-name references, rejection-message sync, skip-validate marker count). Run `uv run pytest` from that directory before committing changes to skill templates.
+- `streamlit-app-builder/tests/` — static validator (`ast.parse` + `ruff check --select E,F,I`) for embedded Python blocks, plus structural-consistency tests (routing-table coverage, template-name references, rejection-message sync, skip-validate marker count, file-list ↔ checklist parity, inference-function name resolution). The directory has its own `pyproject.toml` and `.venv`, independent of any scaffolded app. Run `uv run pytest` from that directory before committing changes to skill templates.
 
 See `streamlit-app-builder/SKILL.md` for the full workflow.
 

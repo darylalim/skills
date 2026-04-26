@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parents[1]  # streamlit-app-builder/
+SKILL_ROOT = Path(__file__).resolve().parents[1]  # streamlit-app-builder/ — note: the *skill* root, not the repo root
 
 CODE_BLOCK_RE = re.compile(r"```python\n(.*?)```", re.DOTALL)
 SKIP_MARKER = "<!-- skip-validate -->"
@@ -59,7 +59,6 @@ def test_extract_honors_skip_marker(tmp_path):
 
 PLACEHOLDER_SUBSTITUTIONS = {
     "<org>/<model>": "test-org/test-model",
-    "<id>": "test-org/test-model",
 }
 
 
@@ -81,9 +80,9 @@ def test_substitute_passes_unmatched_text_through():
 
 
 MARKDOWN_FILES = [
-    REPO_ROOT / "SKILL.md",
-    REPO_ROOT / "references" / "pipeline-tag-patterns.md",
-    REPO_ROOT / "references" / "scaffolding-templates.md",
+    SKILL_ROOT / "SKILL.md",
+    SKILL_ROOT / "references" / "pipeline-tag-patterns.md",
+    SKILL_ROOT / "references" / "scaffolding-templates.md",
 ]
 
 
@@ -137,9 +136,9 @@ def test_block_passes_ruff_check(block):
 
 # === Structural consistency tests ===
 
-PIPELINE_TAG_PATTERNS_MD = REPO_ROOT / "references" / "pipeline-tag-patterns.md"
-SCAFFOLDING_TEMPLATES_MD = REPO_ROOT / "references" / "scaffolding-templates.md"
-SKILL_MD = REPO_ROOT / "SKILL.md"
+PIPELINE_TAG_PATTERNS_MD = SKILL_ROOT / "references" / "pipeline-tag-patterns.md"
+SCAFFOLDING_TEMPLATES_MD = SKILL_ROOT / "references" / "scaffolding-templates.md"
+SKILL_MD = SKILL_ROOT / "SKILL.md"
 
 PIPELINE_TAG_LINE_RE = re.compile(r"^`pipeline_tag`:\s*([^.]+)\.", re.MULTILINE)
 BACKTICK_IDENT_RE = re.compile(r"`([a-z][a-z0-9-]*)`")
@@ -255,4 +254,39 @@ def test_skip_validate_markers_cover_all_python_blocks_in_catalog():
     assert total == skipped, (
         f"pipeline-tag-patterns.md has {total} ```python blocks but only {skipped} "
         f"have <!-- skip-validate --> markers immediately before them"
+    )
+
+
+STEP4_FILE_HEADING_RE = re.compile(r"^### File \d+: `([^`]+)`", re.MULTILINE)
+CHECKLIST_FILES_RE = re.compile(r"^- \[ \] Four files created: (.+)$", re.MULTILINE)
+INFERENCE_FN_REF_RE = re.compile(r"Use (?:scaffolding )?template T\d+ \(`(\w+)`\)")
+DEF_RE = re.compile(r"^def (\w+)\(", re.MULTILINE)
+
+
+def test_step4_files_match_output_checklist():
+    """The four file paths under SKILL.md Step 4's `### File N:` sub-headings match
+    the list in the Output checklist's `Four files created:` line."""
+    text = SKILL_MD.read_text()
+    step4 = set(STEP4_FILE_HEADING_RE.findall(text))
+    checklist_match = CHECKLIST_FILES_RE.search(text)
+    assert checklist_match, "Output checklist's 'Four files created:' line not found"
+    checklist = set(re.findall(r"`([^`]+)`", checklist_match.group(1)))
+    assert step4 == checklist, (
+        f"Step 4 sub-headings list {sorted(step4)} but Output checklist lists "
+        f"{sorted(checklist)}"
+    )
+
+
+def test_inference_function_names_resolve():
+    """Every inference-function name mentioned in pipeline-tag-patterns.md's
+    `Use template Tn (\\`name\\`)` lines has a matching `def name(` in
+    scaffolding-templates.md."""
+    catalog = PIPELINE_TAG_PATTERNS_MD.read_text()
+    templates = SCAFFOLDING_TEMPLATES_MD.read_text()
+    referenced = set(INFERENCE_FN_REF_RE.findall(catalog))
+    defined = set(DEF_RE.findall(templates))
+    unresolved = referenced - defined
+    assert not unresolved, (
+        f"Inference function names referenced in pipeline-tag-patterns.md but not "
+        f"defined in scaffolding-templates.md: {sorted(unresolved)}"
     )

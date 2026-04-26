@@ -92,7 +92,7 @@ st.title("Embeddings")
 text = st.text_area("Input", height=200)
 if st.button("Embed") and text:
     vec = embed(text)
-    st.write(f"Dim: {len(vec)}")
+    st.write(f"Dim: {vec.shape[-1]}")
     st.line_chart(vec)
 ```
 

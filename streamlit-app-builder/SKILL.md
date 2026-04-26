@@ -51,8 +51,8 @@ The input MUST be an HF model card URL of the shape `https://huggingface.co/<org
 **Load the model card:**
 
 1. Strip query string and fragment from the URL. Resolve `<org>/<model>` from the path.
-2. Fetch metadata: `https://huggingface.co/api/models/<org>/<model>` → JSON. Capture `pipeline_tag`, `library_name`, `tags`, `gated`, `downloads`.
-3. Fetch the README: `https://huggingface.co/<org>/<model>/raw/main/README.md`. Use the YAML frontmatter as a fallback for any metadata fields the API didn't return; capture the first library-idiomatic Python code snippet for use as the `inference_snippet` in the IR.
+2. Fetch metadata: `https://huggingface.co/api/models/<org>/<model>` → JSON. Capture `pipeline_tag`, `library_name`, `gated`, plus `sha` (latest commit — needed for the README fallback below).
+3. Fetch the README: `https://huggingface.co/<org>/<model>/raw/main/README.md`. On HTTP 404 (repos whose default branch is not `main`), retry with `https://huggingface.co/<org>/<model>/raw/<sha>/README.md` using the `sha` from step 2. Use the YAML frontmatter as a fallback for any metadata fields the API didn't return.
 4. On HTTP 404 from the metadata API: fail with *"Model `<org>/<model>` not found on HuggingFace, or it's a private repo without access. Verify the URL."*
 5. On HTTP 401/403: *"Access denied to `<org>/<model>`. If gated, run `huggingface-cli login` first; if private, ensure your `HF_TOKEN` has access."*
 
@@ -62,17 +62,18 @@ The input MUST be an HF model card URL of the shape `https://huggingface.co/<org
 ```python
 {
     "model_id": "<org>/<model>",
-    "pipeline_tag": "<tag>",                              # from API metadata
+    "pipeline_tag": "<tag>" or None,                      # from API metadata; None when missing
     "library_name": "transformers" | "diffusers" | "sentence-transformers" | None,
     "is_gated": bool,                                     # api.gated == True
     "deps": ["streamlit", "python-dotenv", ...],          # see Step 4
-    "inference_snippet": "<first python block from README>" or None,
 }
 ```
 
 `library_name` resolution: prefer the API's `library_name` field. If the field is missing, default to `transformers`. If the API's `library_name == "sentence-transformers"` OR the README explicitly recommends `sentence-transformers` (look for `from sentence_transformers import` in the README's code snippets), set `library_name = "sentence-transformers"` regardless of the API value.
 
-`pipeline_tag` normalization: when `library_name` resolves to `sentence-transformers`, set `pipeline_tag = "feature-extraction"` regardless of the API's value. HF embedding models commonly report `"sentence-similarity"` or `"feature-extraction"` interchangeably, and both route to T5 (`embed`) in Step 4.
+`pipeline_tag` normalization:
+- When `library_name` resolves to `sentence-transformers`, set `pipeline_tag = "feature-extraction"` regardless of the API value. HF embedding models commonly report `"sentence-similarity"` or `"feature-extraction"` interchangeably; both route to T5 (`embed`) in Step 4.
+- When the API returns `pipeline_tag: null` (older models or community uploads without a tag) and the README's YAML frontmatter has no `pipeline_tag` field either, leave `pipeline_tag = None` in the IR. Step 3 treats `None` and any unrecognized value the same way: route to T1 + the **Fallback: General Script** UI body.
 
 ## Step 3: Classify the UI pattern
 
@@ -81,7 +82,7 @@ Look up `pipeline_tag` in `references/pipeline-tag-patterns.md`. The matching se
 **Rejected pipeline tag:**
 - `pipeline_tag == "audio-to-audio"` → fail at Step 3 with: *"audio-to-audio has no clean transformers pipeline. This skill can't scaffold a working prototype for audio-to-audio models. For source separation or speech enhancement, use the model's reference implementation directly."*
 
-**Unrecognized pipeline tag** → fall through to the **Fallback: General Script** section in `references/pipeline-tag-patterns.md`.
+**Unrecognized or `None` pipeline tag** → fall through to the **Fallback: General Script** section in `references/pipeline-tag-patterns.md`.
 
 ## Step 4: Scaffold the four files
 
@@ -94,7 +95,7 @@ Look up `pipeline_tag` in `references/pipeline-tag-patterns.md`. The matching se
 | `transformers`, `sentence-transformers` | `feature-extraction` | T5 (`embed`) |
 | `diffusers` | `text-to-image` | T3 (`generate_image`) |
 | `diffusers` | `image-to-image` | T4 (`edit_image`) |
-| any | unrecognized | T1 with the General Script UI body |
+| any | unrecognized or None | T1 with the **Fallback: General Script** UI body |
 
 ### File 1: `streamlit_app.py`
 
@@ -106,7 +107,7 @@ Assemble in this order:
 4. **`MODEL_ID` constant** — hard-coded from Step 1's input URL: `MODEL_ID = "<org>/<model>"`.
 5. **Gated-model gate** — see the snippet below; emit only when `is_gated: true`.
 6. **`load_model()`** — copy from the chosen scaffolding template, decorated with `@st.cache_resource`.
-7. **Inference function** — copy from the chosen scaffolding template (`run_inference` / `generate_response` / `generate_image` / `edit_image` / `embed`).
+7. **Inference function** — copy from the chosen scaffolding template (`run_inference` / `generate_response` / `generate_image` / `edit_image` / `embed`). When using T1, also replace its `PIPELINE_TASK = "<pipeline_tag>"` placeholder with the resolved tag (e.g., `PIPELINE_TASK = "automatic-speech-recognition"`).
 8. **UI body** — paste at module scope after the inference function — no function wrapper.
 
 #### Gated-model gate snippet
@@ -128,11 +129,13 @@ if not os.getenv("HF_TOKEN"):
 Generated by `uv init --name <app-name>`. After init:
 
 ```bash
-uv add streamlit python-dotenv huggingface_hub
+uv add streamlit python-dotenv
 # Plus library-specific deps per the routing table:
 # - transformers (T1, T2):
 uv add transformers torch
-# - For ASR / TTS (transformers pipeline):
+# - For ASR (audio decoding for .wav/.mp3/.m4a/.flac):
+uv add "transformers[audio]"
+# - For TTS (uses scipy.io.wavfile to wrap the model output):
 uv add "transformers[audio]" scipy
 # - For diffusers (T3, T4):
 uv add diffusers transformers torch accelerate pillow
@@ -171,6 +174,8 @@ uv run pytest test_streamlit_app.py -v
 
 Fix failures by adjusting the generated code. Do not weaken the test to make it pass.
 
+`ty check` may flag Streamlit calls whose type stubs are incomplete (e.g., `st.audio_input` returning `UploadedFile | None`). When the call is correct as written, add a narrowly-scoped `# type: ignore[<code>]` on that line using the exact code ty reports — don't remove the call.
+
 ## Step 6: Report to the user
 
 Emit exactly two items, plus a third when the model is gated.
@@ -196,7 +201,7 @@ Emit exactly two items, plus a third when the model is gated.
 - [ ] `streamlit_app.py` has `@st.cache_resource` on `load_model`
 - [ ] `MODEL_ID` is hard-coded as a module-level constant (not env-driven)
 - [ ] If `is_gated`, a `st.error` + `st.stop` gate runs before any model load
-- [ ] `pyproject.toml` declares `streamlit`, `python-dotenv`, `huggingface_hub`, plus library-specific runtime deps and `ruff` / `ty` / `pytest` as dev deps
+- [ ] `pyproject.toml` declares `streamlit`, `python-dotenv`, plus library-specific runtime deps and `ruff` / `ty` / `pytest` as dev deps
 - [ ] `.env.example` always present, contains `HF_TOKEN=` line
 - [ ] `ruff check --fix`, `ruff format`, `ty check`, and `pytest` all pass clean
 - [ ] Step 6 report has 2 always-present items (or 3 when gated)
