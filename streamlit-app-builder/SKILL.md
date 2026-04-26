@@ -645,10 +645,10 @@ Run `huggingface-cli login` on the host before first use, OR set `HF_TOKEN` in `
 pip install uv --break-system-packages   # if uv is not already available
 
 uv init --name <app-name> --package
-uv add streamlit python-dotenv huggingface_hub
+uv add streamlit python-dotenv huggingface_hub watchdog
 uv add "mlx-lm;platform_machine=='arm64' and sys_platform=='darwin'"
 uv add "transformers;platform_machine!='arm64' or sys_platform!='darwin'"
-uv add --dev ruff ty pytest watchdog
+uv add --dev ruff ty pytest
 ```
 
 Versions are not pinned on the command line — `uv add` resolves the current latest at skill-run time and writes the resolved specifier to `pyproject.toml`.
