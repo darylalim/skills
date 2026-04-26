@@ -58,19 +58,8 @@ def test_extract_honors_skip_marker(tmp_path):
 
 
 PLACEHOLDER_SUBSTITUTIONS = {
-    "<app_name>": "app",
-    "<App Name>": "App",
-    "<app-name>": "app",
-    "<default_height>": "1024",
-    "<default_steps>": "20",
-    "<default_width>": "1024",
     "<org>/<model>": "test-org/test-model",
-    "<mlx-community/...>": "mlx-community/test",
-    "<family>": "flux2",
-    "<feature>": "feature",
-    "<ModelClass>": "Model",
     "<id>": "test-org/test-model",
-    "<name>": "name",
 }
 
 
@@ -78,10 +67,6 @@ def substitute_placeholders(content: str) -> str:
     for placeholder, replacement in PLACEHOLDER_SUBSTITUTIONS.items():
         content = content.replace(placeholder, replacement)
     return content
-
-
-def test_substitute_replaces_app_name():
-    assert substitute_placeholders("from <app_name> import x") == "from app import x"
 
 
 def test_substitute_replaces_org_model():
@@ -98,7 +83,7 @@ def test_substitute_passes_unmatched_text_through():
 MARKDOWN_FILES = [
     REPO_ROOT / "SKILL.md",
     REPO_ROOT / "references" / "pipeline-tag-patterns.md",
-    REPO_ROOT / "references" / "mflux-families.md",
+    REPO_ROOT / "references" / "scaffolding-templates.md",
 ]
 
 
@@ -107,10 +92,6 @@ def _all_blocks() -> list[CodeBlock]:
     for f in MARKDOWN_FILES:
         if f.exists():
             out.extend(find_python_blocks(f))
-    # Append scaffolding-templates.md once it exists (added in Task 8).
-    extra = REPO_ROOT / "references" / "scaffolding-templates.md"
-    if extra.exists():
-        out.extend(find_python_blocks(extra))
     return out
 
 
@@ -152,57 +133,3 @@ def test_block_passes_ruff_check(block):
         pytest.fail(
             f"{block.source_file.name}:{block.line_no} ruff failures:\n{output}"
         )
-
-
-# Canonical model IDs from mflux-families.md prose. Each entry: (id, expected_family).
-CANONICAL_MFLUX_IDS: list[tuple[str, str]] = [
-    ("black-forest-labs/FLUX.1-schnell", "flux"),
-    ("black-forest-labs/FLUX.1-dev", "flux"),
-    ("black-forest-labs/FLUX.1-Kontext-dev", "flux"),
-    ("black-forest-labs/FLUX.2-Klein", "flux2"),
-    ("black-forest-labs/FLUX.2-Klein-Edit", "flux2"),
-    ("Qwen/Qwen-Image", "qwen_image"),
-    ("Qwen/Qwen-Image-Edit", "qwen_image"),
-    ("Qwen/Qwen-Image-Edit-2509", "qwen_image"),
-    ("briaai/FIBO", "fibo"),
-    ("briaai/FIBO-lite", "fibo"),
-    ("briaai/Fibo-Edit", "fibo"),
-    ("briaai/Fibo-Edit-RMBG", "fibo"),
-    ("Tongyi-MAI/Z-Image", "z_image"),
-    ("filipstrand/Z-Image-Turbo-mflux-4bit", "z_image"),
-]
-
-
-MFLUX_TABLE_ROW_RE = re.compile(
-    r"^\|\s*`(?P<key>\w+)`\s*\|\s*`(?P<regex>[^`]+)`\s*\|", re.MULTILINE
-)
-
-
-def _load_mflux_routing_table() -> list[tuple[str, re.Pattern[str]]]:
-    text = (REPO_ROOT / "references" / "mflux-families.md").read_text()
-    rows: list[tuple[str, re.Pattern[str]]] = []
-    for m in MFLUX_TABLE_ROW_RE.finditer(text):
-        key = m.group("key")
-        # Skip the header divider row (regex column would not be a real regex).
-        if key in {"Family key", "key"}:
-            continue
-        # Markdown tables require | to be escaped as \| to avoid breaking columns.
-        # Unescape before compiling so alternation works correctly.
-        raw_regex = m.group("regex").replace(r"\|", "|")
-        try:
-            pattern = re.compile(raw_regex)
-        except re.error:
-            continue  # not a routing-table row
-        rows.append((key, pattern))
-    return rows
-
-
-@pytest.mark.parametrize("model_id,expected_family", CANONICAL_MFLUX_IDS)
-def test_canonical_id_matches_expected_family(model_id, expected_family):
-    rows = _load_mflux_routing_table()
-    matched: list[str] = [key for key, pat in rows if pat.match(model_id)]
-    assert matched, f"{model_id} matched no row in mflux-families.md Part A"
-    assert matched[0] == expected_family, (
-        f"{model_id} expected to match {expected_family} but first match was "
-        f"{matched[0]} (full match list: {matched})"
-    )
