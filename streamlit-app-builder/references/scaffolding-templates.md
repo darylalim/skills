@@ -1,542 +1,215 @@
 # Scaffolding templates
 
-Concrete template blocks consumed by `SKILL.md` Step 5. Each variant below lists the files it produces, the placeholder substitutions to perform at scaffold time, and the verbatim code body. Selection is per-pipeline-tag and per-`mflux_family`; SKILL.md Step 5 prose names which variant to use for each input.
+Inference-function templates consumed by `SKILL.md` Step 4. Each template is a complete `load_model()` + inference-function pair, paste-ready into the single-file `streamlit_app.py`. Pick the template by `(library_name, pipeline_tag)` per the routing table in `SKILL.md`.
 
-The mflux family-specific blocks in Part B of `mflux-families.md` are inlined into Variant A and Variant B `inference.py` templates here at scaffold time. Where a template has multiple per-family forms (Variant B `image-to-image`), each family gets its own subsection.
+All templates assume:
+- `MODEL_ID: str` is a module-level constant (hard-coded at scaffold time).
+- `import streamlit as st` and `import os` are already in the file header.
+- For gated models, the `streamlit_app.py` header already performs the `HF_TOKEN` check via `st.error()` + `st.stop()` before any of these functions run.
+- `@st.cache_resource` decorates `load_model` so the model loads once per Streamlit session.
 
-## Variant: text-generation `inference.py`
+## Template T1: transformers `pipeline()` (covers most pipeline tags)
 
-Used for `pipeline_tag ∈ {text-generation, conversational}`.
-
-**Files produced:** `src/<app_name>/inference.py`
-
-**Placeholder substitutions at scaffold time:**
-- `<app_name>` → app's importable Python name
-- `MLX_MODEL_ID_DEFAULT` value → matched mlx-community model ID, or `None` if no MLX equivalent
-
-**Body:**
+Used for `library_name = transformers` and `pipeline_tag` in:
+`text-classification`, `zero-shot-classification`, `token-classification`, `question-answering`, `summarization`, `translation`, `feature-extraction` (when not sentence-transformers), `automatic-speech-recognition`, `text-to-speech`, `image-classification`, `object-detection`, `image-to-text`, `image-text-to-text`.
 
 ```python
-"""Model loading and inference. Dispatches MLX <-> transformers by platform."""
-from collections.abc import Iterator
-from functools import lru_cache
-from typing import Any
-
-from <app_name> import config
-
-# MLX model ID chosen at scaffold time (highest downloads under mlx-community).
-# Override by setting MLX_MODEL_ID in .env.
-MLX_MODEL_ID_DEFAULT: str | None = "<mlx-community/...>"
-
-
-@lru_cache(maxsize=1)
-def load_model() -> Any:
-    """Lazy-load the model once per process."""
-    if config.IS_APPLE_SILICON and MLX_MODEL_ID_DEFAULT:
-        return _load_mlx()
-    return _load_transformers()
-
-
-def _load_mlx():
-    import os as _os
-
-    from mlx_lm import load
-
-    mlx_id = _os.getenv("MLX_MODEL_ID", MLX_MODEL_ID_DEFAULT)
-    model, tokenizer = load(mlx_id)
-    return ("mlx", model, tokenizer)
-
-
-def _load_transformers():
-    from transformers import AutoModelForCausalLM, AutoTokenizer
-
-    tokenizer = AutoTokenizer.from_pretrained(
-        config.MODEL_ID, revision=config.MODEL_REVISION, token=config.HF_TOKEN
-    )
-    model = AutoModelForCausalLM.from_pretrained(
-        config.MODEL_ID, revision=config.MODEL_REVISION, token=config.HF_TOKEN
-    )
-    return ("transformers", model, tokenizer)
-
-
-def generate_response(prompt: str, max_new_tokens: int | None = None) -> str:
-    backend, model, tokenizer = load_model()
-    max_tokens = max_new_tokens or config.MAX_NEW_TOKENS
-    if backend == "mlx":
-        from mlx_lm import generate
-        return generate(model, tokenizer, prompt=prompt, max_tokens=max_tokens)
-    inputs = tokenizer(prompt, return_tensors="pt")
-    out = model.generate(**inputs, max_new_tokens=max_tokens)
-    return tokenizer.decode(out[0], skip_special_tokens=True)
-
-
-def generate_response_stream(
-    prompt: str, max_new_tokens: int | None = None
-) -> Iterator[str]:
-    """Yield response chunks. Used by the chat page via st.write_stream."""
-    backend, model, tokenizer = load_model()
-    max_tokens = max_new_tokens or config.MAX_NEW_TOKENS
-    if backend == "mlx":
-        from mlx_lm import stream_generate
-        for response in stream_generate(
-            model, tokenizer, prompt=prompt, max_tokens=max_tokens
-        ):
-            yield response.text
-        return
-    from threading import Thread
-
-    from transformers import TextIteratorStreamer
-    inputs = tokenizer(prompt, return_tensors="pt")
-    streamer = TextIteratorStreamer(
-        tokenizer, skip_prompt=True, skip_special_tokens=True
-    )
-    kwargs = {**inputs, "max_new_tokens": max_tokens, "streamer": streamer}
-    Thread(target=model.generate, kwargs=kwargs).start()
-    yield from streamer
-```
-
-## `tests/test_inference.py` — streaming
-
-Append to the test file produced from SKILL.md Step 5's `test_inference.py` template:
-
-```python
-def test_generate_response_stream_yields_chunks(monkeypatch):
-    """Force MLX path; patch stream_generate to a deterministic iterable."""
-    from <app_name> import inference
-
-    class _Resp:
-        def __init__(self, text):
-            self.text = text
-
-    monkeypatch.setattr(
-        inference, "load_model",
-        lambda: ("mlx", object(), object()),
-    )
-    monkeypatch.setattr(
-        "mlx_lm.stream_generate",
-        lambda *a, **kw: iter([_Resp("hello"), _Resp(" world")]),
-        raising=False,
-    )
-    if hasattr(inference.load_model, "cache_clear"):
-        inference.load_model.cache_clear()
-
-    chunks = list(inference.generate_response_stream("prompt", max_new_tokens=5))
-    assert chunks == ["hello", " world"]
-```
-
-`raising=False` lets the patch install a fake `stream_generate` even on hosts where `mlx_lm` isn't importable. Forcing the MLX path keeps the test deterministic — the transformers path uses a background `Thread` and `TextIteratorStreamer`, which is harder to drive synchronously in a unit test.
-
-## Variant A: text-to-image `inference.py` (mflux + diffusers fallback)
-
-Used for `pipeline_tag = text-to-image` with `mflux_family ∈ {flux}` (the only family with a diffusers fallback today).
-
-**Files produced:** `src/<app_name>/inference.py`
-
-**Placeholder substitutions at scaffold time:**
-- `<app_name>` → app's importable name
-- The `_load_mflux()` body's import + instantiation lines are inlined verbatim from `references/mflux-families.md` Part B (matched family — currently only `flux`)
-
-**Body:**
-
-```python
-"""Image inference. Dispatches mflux <-> diffusers by platform."""
-from functools import lru_cache
-from typing import Any
-
-from <app_name> import config
-from PIL import Image
-
-
-@lru_cache(maxsize=1)
-def load_model() -> Any:
-    if config.IS_APPLE_SILICON:
-        return _load_mflux()
-    return _load_diffusers()
-
-
-def _load_mflux():
-    # <inlined verbatim from mflux-families.md Part B — imports + instantiation>
-    from mflux.models.common.config import ModelConfig
-    from mflux.models.flux.variants.txt2img.flux import Flux1
-
-    model = Flux1(model_config=ModelConfig.schnell())
-    return ("mflux", model)
-
-
-def _load_diffusers():
-    import torch
-    from diffusers import FluxPipeline
-
-    device = (
-        config.DEVICE
-        if config.DEVICE != "auto"
-        else ("cuda" if torch.cuda.is_available() else "cpu")
-    )
-    pipe = FluxPipeline.from_pretrained(
-        config.MODEL_ID, revision=config.MODEL_REVISION,
-        torch_dtype=torch.bfloat16, token=config.HF_TOKEN,
-    ).to(device)
-    return ("diffusers", pipe)
-
-
-def generate_image(prompt, width, height, num_inference_steps, seed) -> Image.Image:
-    backend, model = load_model()
-    if backend == "mflux":
-        # Match kwargs to the Part B snippet (e.g. guidance=4.0 for flux).
-        return model.generate_image(
-            seed=seed, prompt=prompt, width=width, height=height,
-            num_inference_steps=num_inference_steps,
-        ).image
-    import torch
-    return model(
-        prompt=prompt, width=width, height=height,
-        num_inference_steps=num_inference_steps,
-        generator=torch.Generator(device="cpu").manual_seed(seed),
-    ).images[0]
-```
-
-## Variant A: image-to-image `inference.py` (flux family — diffusers fallback)
-
-Used for `pipeline_tag = image-to-image` with `mflux_family = flux`.
-
-**Files produced:** `src/<app_name>/inference.py`
-
-**Placeholder substitutions:** same as Variant A t2i.
-
-**Body:**
-
-```python
-"""Image-to-image inference. Dispatches mflux <-> diffusers by platform."""
-from functools import lru_cache
-from typing import Any
-
-from <app_name> import config
-from PIL import Image
-
-
-# Flux1Kontext.generate_image returns a GeneratedImage wrapper; call .image.
-@lru_cache(maxsize=1)
-def load_model() -> Any:
-    if config.IS_APPLE_SILICON:
-        return _load_mflux()
-    return _load_diffusers()
-
-
-def _load_mflux():
-    # <inlined verbatim from mflux-families.md Part B, flux i2i subsection>
-    from mflux.models.common.config import ModelConfig
-    from mflux.models.flux.variants.kontext.flux_kontext import Flux1Kontext
-
-    model = Flux1Kontext(model_config=ModelConfig.dev_kontext())
-    return ("mflux", model)
-
-
-def _load_diffusers():
-    import torch
-    from diffusers import FluxImg2ImgPipeline
-
-    device = (
-        config.DEVICE
-        if config.DEVICE != "auto"
-        else ("cuda" if torch.cuda.is_available() else "cpu")
-    )
-    pipe = FluxImg2ImgPipeline.from_pretrained(
-        config.MODEL_ID, revision=config.MODEL_REVISION,
-        torch_dtype=torch.bfloat16, token=config.HF_TOKEN,
-    ).to(device)
-    return ("diffusers", pipe)
-
-
-def edit_image(prompt, image_paths, num_inference_steps, seed) -> Image.Image:
-    backend, model = load_model()
-    if backend == "mflux":
-        # Flux1Kontext takes image_path (singular) and guidance=4.0.
-        return model.generate_image(
-            seed=seed, prompt=prompt,
-            num_inference_steps=num_inference_steps,
-            image_path=image_paths[0],
-        ).image
-    import torch
-    reference = Image.open(image_paths[0])
-    return model(
-        prompt=prompt, image=reference,
-        num_inference_steps=num_inference_steps,
-        generator=torch.Generator(device="cpu").manual_seed(seed),
-    ).images[0]
-```
-
-## Variant B: text-to-image `inference.py` (Apple-Silicon-only)
-
-Used for `pipeline_tag = text-to-image` with `mflux_family ∈ {flux2, qwen_image, fibo, z_image}`.
-
-**Files produced:** `src/<app_name>/inference.py`
-
-**Placeholder substitutions:**
-- `<app_name>` → app's importable name
-- `<family>` → matched `mflux_family` (used in the RuntimeError message)
-- The `_load_mflux()` body's imports + instantiation are inlined from `references/mflux-families.md` Part B for the matched family. The example below uses `flux2`; substitute the per-family lines from Part B.
-
-**Body:**
-
-```python
-"""Image inference. Apple-Silicon-only (no diffusers fallback for this family)."""
-from functools import lru_cache
-from typing import Any
-
-from <app_name> import config
-from PIL import Image
-
-
-# generate_image returns a GeneratedImage wrapper; call .image for PIL.Image.
-@lru_cache(maxsize=1)
-def load_model() -> Any:
-    if not config.IS_APPLE_SILICON:
-        raise RuntimeError(
-            "This app requires Apple Silicon. The <family> family has no "
-            "diffusers fallback. Run on a Mac with Apple Silicon, or "
-            "re-scaffold from an HF model card whose family has a diffusers "
-            "fallback (e.g., black-forest-labs/FLUX.1-schnell)."
-        )
-    # <inlined verbatim from mflux-families.md Part B>
-    from mflux.models.common.config import ModelConfig
-    from mflux.models.flux2.variants import Flux2Klein
-
-    model = Flux2Klein(model_config=ModelConfig.flux2_klein_9b())
-    return ("mflux", model)
-
-
-def generate_image(prompt, width, height, num_inference_steps, seed) -> Image.Image:
-    _, model = load_model()
-    # Match kwargs to the Part B snippet (e.g. guidance=4.0 for flux).
-    return model.generate_image(
-        seed=seed, prompt=prompt, width=width, height=height,
-        num_inference_steps=num_inference_steps,
-    ).image
-```
-
-## Variant B: image-to-image `inference.py` — `flux2`
-
-**Files produced:** `src/<app_name>/inference.py`
-
-**Trigger:** `pipeline_tag = image-to-image` AND `mflux_family = flux2`.
-
-**Body:**
-
-```python
-"""Image-to-image inference. Apple-Silicon-only (flux2, no fallback)."""
-from functools import lru_cache
-from typing import Any
-
-from <app_name> import config
-from PIL import Image
-
-
-@lru_cache(maxsize=1)
-def load_model() -> Any:
-    if not config.IS_APPLE_SILICON:
-        raise RuntimeError(
-            "This app requires Apple Silicon. The flux2 family has no "
-            "diffusers fallback. Run on a Mac with Apple Silicon, or "
-            "pick a model family with a generic diffusers backend "
-            "(e.g., any black-forest-labs/FLUX.1-* model)."
-        )
-    from mflux.models.common.config import ModelConfig
-    from mflux.models.flux2.variants import Flux2KleinEdit
-
-    model = Flux2KleinEdit(model_config=ModelConfig.flux2_klein_9b())
-    return ("mflux", model)
-
-
-def edit_image(prompt, image_paths, num_inference_steps, seed) -> Image.Image:
-    _, model = load_model()
-    return model.generate_image(
-        seed=seed, prompt=prompt,
-        image_paths=image_paths,
-        num_inference_steps=num_inference_steps,
-    ).image
-```
-
-## Variant B: image-to-image `inference.py` — `qwen_image`
-
-**Files produced:** `src/<app_name>/inference.py`
-
-**Trigger:** `pipeline_tag = image-to-image` AND `mflux_family = qwen_image`.
-
-**Body:**
-
-```python
-"""Image-to-image inference. Apple-Silicon-only (qwen_image, no fallback)."""
-from functools import lru_cache
-from typing import Any
-
-from <app_name> import config
-from PIL import Image
-
-
-@lru_cache(maxsize=1)
-def load_model() -> Any:
-    if not config.IS_APPLE_SILICON:
-        raise RuntimeError(
-            "This app requires Apple Silicon. The qwen_image family has no "
-            "diffusers fallback. Run on a Mac with Apple Silicon, or "
-            "pick a model family with a generic diffusers backend "
-            "(e.g., any black-forest-labs/FLUX.1-* model)."
-        )
-    from mflux.models.common.config import ModelConfig
-    from mflux.models.qwen.variants.edit.qwen_image_edit import QwenImageEdit
-
-    model = QwenImageEdit(model_config=ModelConfig.qwen_image_edit())
-    return ("mflux", model)
-
-
-def edit_image(prompt, image_paths, num_inference_steps, seed) -> Image.Image:
-    _, model = load_model()
-    return model.generate_image(
-        seed=seed, prompt=prompt,
-        image_paths=image_paths,
-        num_inference_steps=num_inference_steps,
-        guidance=2.5,
-    ).image
-```
-
-## Variant B: image-to-image `inference.py` — `fibo`
-
-**Files produced:** `src/<app_name>/inference.py`
-
-**Trigger:** `pipeline_tag = image-to-image` AND `mflux_family = fibo`.
-
-**Note:** `FIBOEdit.generate_image` takes a single `image_path` (not a list). The wrapper passes `image_paths[0]`.
-
-**Body:**
-
-```python
-"""Image-to-image inference. Apple-Silicon-only (fibo, no fallback)."""
-from functools import lru_cache
-from typing import Any
-
-from <app_name> import config
-from PIL import Image
-
-
-@lru_cache(maxsize=1)
-def load_model() -> Any:
-    if not config.IS_APPLE_SILICON:
-        raise RuntimeError(
-            "This app requires Apple Silicon. The fibo family has no "
-            "diffusers fallback. Run on a Mac with Apple Silicon, or "
-            "pick a model family with a generic diffusers backend "
-            "(e.g., any black-forest-labs/FLUX.1-* model)."
-        )
-    from mflux.models.common.config import ModelConfig
-    from mflux.models.fibo.variants.edit import FIBOEdit
-
-    model = FIBOEdit(model_config=ModelConfig.fibo_edit())
-    return ("mflux", model)
-
-
-def edit_image(prompt, image_paths, num_inference_steps, seed) -> Image.Image:
-    _, model = load_model()
-    return model.generate_image(
-        seed=seed, prompt=prompt,
-        image_path=image_paths[0],
-        num_inference_steps=num_inference_steps,
-        guidance=3.5,
-    ).image
-```
-
-## Variant: diffusers-only fallback `inference.py`
-
-Used for `pipeline_tag ∈ {text-to-image, image-to-image}` when `mflux_family = None` (no Part A regex matched).
-
-**Files produced:** `src/<app_name>/inference.py`
-
-**Body (text-to-image):**
-
-```python
-"""Image inference. diffusers on all platforms (no mflux family matched)."""
-from functools import lru_cache
-from typing import Any
-
-from <app_name> import config
-from PIL import Image
-
-
-@lru_cache(maxsize=1)
-def load_model() -> Any:
-    import torch
-    from diffusers import DiffusionPipeline
-
-    device = (
-        config.DEVICE
-        if config.DEVICE != "auto"
-        else ("cuda" if torch.cuda.is_available() else "cpu")
-    )
-    pipe = DiffusionPipeline.from_pretrained(
-        config.MODEL_ID, revision=config.MODEL_REVISION,
-        torch_dtype=torch.bfloat16, token=config.HF_TOKEN,
-    ).to(device)
-    return ("diffusers", pipe)
-
-
-def generate_image(prompt, width, height, num_inference_steps, seed) -> Image.Image:
-    _, pipe = load_model()
-    import torch
-    return pipe(
-        prompt=prompt, width=width, height=height,
-        num_inference_steps=num_inference_steps,
-        generator=torch.Generator(device="cpu").manual_seed(seed),
-    ).images[0]
-```
-
-For `image-to-image`, swap `DiffusionPipeline` for `AutoPipelineForImage2Image`, expose `edit_image(prompt, image_paths, num_inference_steps, seed)`, and load the reference via `Image.open(image_paths[0])`. Same skeleton otherwise.
-
-## Test fixtures: `tests/conftest.py`
-
-**Files produced:** `tests/conftest.py`
-
-**Placeholder substitutions:** `<app_name>` → app's importable name throughout.
-
-**Body:**
-
-```python
-"""Test fixtures. Set required env vars before package import."""
 import os
 
-os.environ.setdefault("MODEL_ID", "test-model")
-# os.environ.setdefault("HF_TOKEN", "test-token")  # enable for gated models
+import streamlit as st
+from transformers import pipeline
 
+MODEL_ID = "<org>/<model>"
+PIPELINE_TASK = "<pipeline_tag>"  # e.g. "text-classification"
+
+
+@st.cache_resource
+def load_model():
+    """Load and cache the transformers pipeline."""
+    return pipeline(PIPELINE_TASK, model=MODEL_ID, token=os.getenv("HF_TOKEN"))
+
+
+def run_inference(*args, **kwargs):
+    """Invoke the pipeline. Pass kwargs matching the pipeline's call signature."""
+    return load_model()(*args, **kwargs)
+```
+
+Per-tag invocation hint (for the UI body in `pipeline-tag-patterns.md`):
+- `text-classification` / `zero-shot-classification` / `token-classification` / `summarization` / `translation` / `feature-extraction`: `run_inference(text)`
+- `question-answering`: `run_inference(question=q, context=c)`
+- `automatic-speech-recognition`: `run_inference(audio_bytes)` — returns dict with `text` key
+- `text-to-speech`: `run_inference(text)` — returns dict with `audio` (numpy array) and `sampling_rate`
+- `image-classification` / `object-detection` / `image-to-text`: `run_inference(image)` — accepts PIL or path
+- `image-text-to-text`: `run_inference(text=prompt, images=image)` — argument names vary by model; check the model card
+
+## Template T2: transformers `AutoModelForCausalLM` (text generation)
+
+Used for `library_name = transformers` and `pipeline_tag` in `{text-generation, conversational}`.
+
+```python
+import os
+
+import streamlit as st
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
+MODEL_ID = "<org>/<model>"
+
+
+@st.cache_resource
+def load_model():
+    """Load and cache the causal-LM model and tokenizer."""
+    token = os.getenv("HF_TOKEN")
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, token=token)
+    model = AutoModelForCausalLM.from_pretrained(MODEL_ID, token=token)
+    return model, tokenizer
+
+
+def generate_response(prompt: str, max_new_tokens: int = 256) -> str:
+    """Synchronous generation. For chat UIs that call this inside st.chat_message."""
+    model, tokenizer = load_model()
+    inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+    out = model.generate(**inputs, max_new_tokens=max_new_tokens)
+    decoded = tokenizer.decode(
+        out[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True
+    )
+    return decoded
+```
+
+## Template T3: diffusers `AutoPipelineForText2Image`
+
+Used for `library_name = diffusers` and `pipeline_tag = text-to-image`.
+
+```python
+import os
+
+import streamlit as st
+import torch
+from diffusers import AutoPipelineForText2Image
+
+MODEL_ID = "<org>/<model>"
+
+
+@st.cache_resource
+def load_model():
+    """Load and cache the diffusers pipeline."""
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    dtype = torch.bfloat16 if device == "cuda" else torch.float32
+    pipe = AutoPipelineForText2Image.from_pretrained(
+        MODEL_ID, torch_dtype=dtype, token=os.getenv("HF_TOKEN")
+    ).to(device)
+    return pipe
+
+
+def generate_image(prompt: str, num_inference_steps: int = 20, seed: int = 42):
+    """Generate one image from a prompt."""
+    pipe = load_model()
+    generator = torch.Generator(device="cpu").manual_seed(seed)
+    return pipe(
+        prompt=prompt, num_inference_steps=num_inference_steps, generator=generator
+    ).images[0]
+```
+
+## Template T4: diffusers `AutoPipelineForImage2Image`
+
+Used for `library_name = diffusers` and `pipeline_tag = image-to-image`.
+
+```python
+import os
+
+import streamlit as st
+import torch
+from diffusers import AutoPipelineForImage2Image
+from PIL import Image
+
+MODEL_ID = "<org>/<model>"
+
+
+@st.cache_resource
+def load_model():
+    """Load and cache the diffusers img2img pipeline."""
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    dtype = torch.bfloat16 if device == "cuda" else torch.float32
+    pipe = AutoPipelineForImage2Image.from_pretrained(
+        MODEL_ID, torch_dtype=dtype, token=os.getenv("HF_TOKEN")
+    ).to(device)
+    return pipe
+
+
+def edit_image(
+    prompt: str, image: Image.Image, num_inference_steps: int = 20, seed: int = 42
+):
+    """Edit a reference image conditioned on a prompt."""
+    pipe = load_model()
+    generator = torch.Generator(device="cpu").manual_seed(seed)
+    return pipe(
+        prompt=prompt, image=image,
+        num_inference_steps=num_inference_steps, generator=generator,
+    ).images[0]
+```
+
+## Template T5: sentence-transformers (embeddings)
+
+Used for `library_name = sentence-transformers` (or when `library_name = transformers` and the model card explicitly recommends sentence-transformers in the README — common for `feature-extraction` models).
+
+```python
+import os
+
+import streamlit as st
+from sentence_transformers import SentenceTransformer
+
+MODEL_ID = "<org>/<model>"
+
+
+@st.cache_resource
+def load_model():
+    """Load and cache the SentenceTransformer model."""
+    return SentenceTransformer(MODEL_ID, token=os.getenv("HF_TOKEN"))
+
+
+def embed(text: str | list[str]):
+    """Compute embeddings. Returns numpy array (N, D) for list or (D,) for string."""
+    return load_model().encode(text)
+```
+
+## Template T6: `test_streamlit_app.py` skeleton
+
+Used in every scaffold. Provides one mocked-model test that validates the inference function's signature without hitting the network.
+
+```python
+"""Tests for the scaffolded streamlit_app.py inference function."""
 import pytest
 
 
-class _StubModel:
-    """Minimal interface used by inference.py."""
-    def generate(self, *args, **kwargs):
-        return [[0, 1, 2]]
-
-    def predict(self, x):
-        return [0] * len(x)
-
-
 @pytest.fixture
-def mock_model(monkeypatch):
-    from <app_name> import inference
-    monkeypatch.setattr(inference, "load_model", lambda: ("stub", _StubModel(), None))
-    return _StubModel()
+def mock_load_model(monkeypatch):
+    """Replace load_model with a stub. Override per-template per the comments below."""
+    import streamlit_app as app
+
+    class _StubModel:
+        # Minimal interface — override per template:
+        # Template T1 (pipeline): callable returning [{"label": "X", "score": 0.9}]
+        # Template T2 (causal-lm): (model, tokenizer); model.generate() -> [[0,1,2]]
+        # Template T3/T4 (diffusers): __call__ -> obj with .images[0] = PIL.Image
+        # Template T5 (sentence-transformers): object with .encode() returning np.array
+        def __call__(self, *args, **kwargs):
+            return [{"label": "POSITIVE", "score": 0.99}]
+
+    if hasattr(app.load_model, "clear"):
+        app.load_model.clear()
+    monkeypatch.setattr(app, "load_model", lambda: _StubModel())
+    return _StubModel
 
 
-class _StubMfluxModel:
-    """Minimal interface used by mflux-backed inference.py templates."""
-    def generate_image(self, *args, **kwargs):
-        from PIL import Image
-
-        class _StubGenerated:
-            image = Image.new("RGB", (64, 64))
-        return _StubGenerated()
-
-
-@pytest.fixture
-def mock_mflux_model(monkeypatch):
-    from <app_name> import inference
-    monkeypatch.setattr(inference, "load_model", lambda: ("mflux", _StubMfluxModel()))
-    return _StubMfluxModel()
+def test_inference_function_returns_expected_type(mock_load_model):
+    # Adapt the call signature and assertion to whichever template is in use:
+    # T1: result = app.run_inference("hi"); assert isinstance(result, list)
+    # T2: result = app.generate_response("hi"); assert isinstance(result, str)
+    # T3: result = app.generate_image("a cat"); assert hasattr(result, "size")
+    # T4: img = PIL.Image.new("RGB", (8, 8))
+    #     result = app.edit_image("a cat", img); assert hasattr(result, "size")
+    # T5: result = app.embed("hi"); assert hasattr(result, "shape")
+    # Implement per the in-use template; this skeleton is replaced at scaffold time.
+    pass
 ```
+
+The scaffold-time substitution replaces the body of `test_inference_function_returns_expected_type` with the appropriate adaptation — the comment hints inside T6 spell out each adaptation explicitly.
