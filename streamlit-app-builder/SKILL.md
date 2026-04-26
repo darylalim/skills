@@ -651,6 +651,8 @@ uv add "transformers;platform_machine!='arm64' or sys_platform!='darwin'"
 uv add --dev ruff ty pytest
 ```
 
+`watchdog` is required by the `[server].fileWatcherType = "watchdog"` setting in the `.streamlit/config.toml` template (Step 5).
+
 Versions are not pinned on the command line — `uv add` resolves the current latest at skill-run time and writes the resolved specifier to `pyproject.toml`.
 
 **Pattern-specific additional deps:**
