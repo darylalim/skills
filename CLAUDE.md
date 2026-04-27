@@ -120,7 +120,7 @@ pytest test_app.py -v
 **Repository structure:**
 - `gradio-app-builder/references/scaffolding-templates.md` — `load_model` + inference-function templates (T1-T5) plus the `test_app.py` skeleton (T6).
 - `gradio-app-builder/references/pipeline-tag-patterns.md` — UI body templates (`gr.Interface` / `gr.ChatInterface`) indexed by `pipeline_tag`.
-- `gradio-app-builder/tests/` — static validator + structural-consistency tests + Gradio-specific checks (Spaces frontmatter validity, `gr.ChatInterface` used in T2). Has its own `pyproject.toml` and `.venv`. Run `uv run pytest` from that directory before committing changes to skill templates.
+- `gradio-app-builder/tests/` — static validator + structural-consistency tests + Gradio-specific checks (Spaces frontmatter validity, `gr.ChatInterface` in T2, `guidance_scale` in T3, `strength` in T4, cosine-similarity return in T5). Has its own `pyproject.toml` and `.venv`. Run `uv run pytest` from that directory before committing changes to skill templates.
 
 See `gradio-app-builder/SKILL.md` for the full workflow.
 
