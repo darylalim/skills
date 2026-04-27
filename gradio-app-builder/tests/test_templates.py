@@ -259,6 +259,23 @@ def test_skip_validate_markers_cover_all_python_blocks_in_catalog():
     )
 
 
+def test_no_skip_validate_markers_in_scaffolding_templates():
+    """scaffolding-templates.md must have ZERO skip-validate markers preceding
+    Python blocks — every T1-T6 block is validated by ast.parse + ruff. A
+    marker here would silently drop a template from validation."""
+    text = SCAFFOLDING_TEMPLATES_MD.read_text()
+    skipped_lines: list[int] = []
+    for m in CODE_BLOCK_RE.finditer(text):
+        before = text[: m.start()]
+        last_line = before.rstrip("\n").rsplit("\n", 1)[-1] if before else ""
+        if SKIP_MARKER in last_line:
+            skipped_lines.append(before.count("\n") + 1)
+    assert not skipped_lines, (
+        f"scaffolding-templates.md has unexpected skip-validate markers before "
+        f"Python blocks at lines {skipped_lines} — these templates must be validated"
+    )
+
+
 STEP4_FILE_HEADING_RE = re.compile(r"^### File \d+: `([^`]+)`", re.MULTILINE)
 CHECKLIST_FILES_RE = re.compile(r"^- \[ \] Five files created: (.+)$", re.MULTILINE)
 INFERENCE_FN_REF_RE = re.compile(r"Use (?:scaffolding )?template T\d+ \(`(\w+)`\)")
@@ -388,8 +405,8 @@ def test_t3_uses_guidance_scale():
     is the primary quality/speed knob for text-to-image diffusers pipelines."""
     body = _template_section("T3")
     assert "guidance_scale" in body, "T3 must expose guidance_scale"
-    assert "seed" not in body, (
-        "T3 must not use seed — guidance_scale is the spec-aligned parameter"
+    assert not re.search(r"\bseed\b", body), (
+        "T3 must not reference seed — guidance_scale is the spec-aligned parameter"
     )
 
 
@@ -398,8 +415,8 @@ def test_t4_uses_strength():
     primary control axis for image-to-image diffusers pipelines."""
     body = _template_section("T4")
     assert "strength" in body, "T4 must expose strength"
-    assert "seed" not in body, (
-        "T4 must not use seed — strength is the spec-aligned parameter"
+    assert not re.search(r"\bseed\b", body), (
+        "T4 must not reference seed — strength is the spec-aligned parameter"
     )
 
 
@@ -411,6 +428,9 @@ def test_t5_returns_cosine_similarity():
     assert "from sentence_transformers.util import cos_sim" in body, (
         "T5 must import cos_sim from sentence_transformers.util"
     )
-    assert "def embed(text_a: str, text_b: str) -> float:" in body, (
-        "T5's embed function must take two text args and return float"
-    )
+    # Check name + arg names + return type separately so future line wraps
+    # don't break the test.
+    assert "def embed(" in body, "T5 must define a function named `embed`"
+    assert "text_a: str" in body, "T5's embed must accept `text_a: str`"
+    assert "text_b: str" in body, "T5's embed must accept `text_b: str`"
+    assert "-> float:" in body, "T5's embed must return float"
