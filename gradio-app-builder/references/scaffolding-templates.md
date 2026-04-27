@@ -112,12 +112,15 @@ def load_model():
     return pipe
 
 
-def generate_image(prompt: str, num_inference_steps: int = 20, seed: int = 42):
+def generate_image(
+    prompt: str, num_inference_steps: int = 20, guidance_scale: float = 7.5
+):
     """Generate one image from a prompt."""
     pipe = load_model()
-    generator = torch.Generator(device="cpu").manual_seed(seed)
     return pipe(
-        prompt=prompt, num_inference_steps=num_inference_steps, generator=generator
+        prompt=prompt,
+        num_inference_steps=num_inference_steps,
+        guidance_scale=guidance_scale,
     ).images[0]
 ```
 
@@ -148,14 +151,18 @@ def load_model():
 
 
 def edit_image(
-    prompt: str, image: Image.Image, num_inference_steps: int = 20, seed: int = 42
+    prompt: str,
+    image: Image.Image,
+    num_inference_steps: int = 20,
+    strength: float = 0.8,
 ):
     """Edit a reference image conditioned on a prompt."""
     pipe = load_model()
-    generator = torch.Generator(device="cpu").manual_seed(seed)
     return pipe(
-        prompt=prompt, image=image,
-        num_inference_steps=num_inference_steps, generator=generator,
+        prompt=prompt,
+        image=image,
+        num_inference_steps=num_inference_steps,
+        strength=strength,
     ).images[0]
 ```
 
@@ -168,6 +175,7 @@ import os
 from functools import lru_cache
 
 from sentence_transformers import SentenceTransformer
+from sentence_transformers.util import cos_sim
 
 MODEL_ID = "<org>/<model>"
 
@@ -178,9 +186,11 @@ def load_model():
     return SentenceTransformer(MODEL_ID, token=os.getenv("HF_TOKEN"))
 
 
-def embed(text: str | list[str]):
-    """Compute embeddings. Returns numpy array (N, D) for list or (D,) for string."""
-    return load_model().encode(text)
+def embed(text_a: str, text_b: str) -> float:
+    """Compute cosine similarity between two texts."""
+    model = load_model()
+    embeddings = model.encode([text_a, text_b])
+    return float(cos_sim(embeddings[0], embeddings[1]).item())
 ```
 
 ## Template T6: `test_app.py` skeleton
@@ -210,7 +220,7 @@ def mock_load_model(monkeypatch):
         # Template T1 (pipeline): callable returning [{"label": "X", "score": 0.9}]
         # Template T2 (causal-lm): (model, tokenizer); model.generate() -> [[0,1,2]]
         # Template T3/T4 (diffusers): __call__ -> obj with .images[0] = PIL.Image
-        # Template T5 (sentence-transformers): object with .encode() returning np.array
+        # Template T5 (sentence-transformers): .encode([a, b]) returning shape (2, D)
         def __call__(self, *args, **kwargs):
             return [{"label": "POSITIVE", "score": 0.99}]
 
@@ -227,7 +237,7 @@ def test_inference_function_returns_expected_type(mock_load_model):
     # T3: result = app.generate_image("a cat"); assert hasattr(result, "size")
     # T4: img = PIL.Image.new("RGB", (8, 8))
     #     result = app.edit_image("a cat", img); assert hasattr(result, "size")
-    # T5: result = app.embed("hi"); assert hasattr(result, "shape")
+    # T5: result = app.embed("hi", "world"); assert isinstance(result, float)
     # Implement per the in-use template; this skeleton is replaced at scaffold time.
     pass
 ```

@@ -97,15 +97,13 @@ demo = gr.Interface(
 
 <!-- skip-validate -->
 ```python
-def _embed_dim(text: str) -> str:
-    vec = embed(text)
-    return f"Embedding shape: {tuple(vec.shape)}"
-
-
 demo = gr.Interface(
-    fn=_embed_dim,
-    inputs=gr.Textbox(label="Input", lines=5),
-    outputs=gr.Textbox(label="Dim"),
+    fn=embed,
+    inputs=[
+        gr.Textbox(label="Text A", lines=3),
+        gr.Textbox(label="Text B", lines=3),
+    ],
+    outputs=gr.Number(label="Cosine similarity", interactive=False),
     title=f"Embed — {MODEL_ID}",
     flagging_mode="never",
 )
@@ -225,7 +223,7 @@ demo = gr.Interface(
     inputs=[
         gr.Textbox(label="Prompt", lines=3),
         gr.Slider(1, 100, value=20, step=1, label="Steps"),
-        gr.Number(value=42, label="Seed", precision=0),
+        gr.Slider(1.0, 20.0, value=7.5, step=0.5, label="Guidance scale"),
     ],
     outputs=gr.Image(type="pil", label="Output"),
     title=f"Generate — {MODEL_ID}",
@@ -245,7 +243,7 @@ demo = gr.Interface(
         gr.Textbox(label="Prompt", lines=3),
         gr.Image(type="pil", label="Reference"),
         gr.Slider(1, 100, value=20, step=1, label="Steps"),
-        gr.Number(value=42, label="Seed", precision=0),
+        gr.Slider(0.0, 1.0, value=0.8, step=0.05, label="Strength"),
     ],
     outputs=gr.Image(type="pil", label="Output"),
     title=f"Edit — {MODEL_ID}",
