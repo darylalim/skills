@@ -370,3 +370,47 @@ def test_t2_uses_chat_interface():
         "Text generation / chat section must NOT use gr.Blocks — "
         "use gr.ChatInterface instead"
     )
+
+
+def _template_section(name: str) -> str:
+    """Return the body of a `## Template Tn:` section from scaffolding-templates.md."""
+    templates = SCAFFOLDING_TEMPLATES_MD.read_text()
+    section = re.search(
+        rf"^## Template {name}:.*?\n(.*?)(?=^## |\Z)",
+        templates, re.MULTILINE | re.DOTALL,
+    )
+    assert section, f"Template {name} section missing from scaffolding-templates.md"
+    return section.group(1)
+
+
+def test_t3_uses_guidance_scale():
+    """T3 (text-to-image) must expose `guidance_scale`, not `seed`. guidance_scale
+    is the primary quality/speed knob for text-to-image diffusers pipelines."""
+    body = _template_section("T3")
+    assert "guidance_scale" in body, "T3 must expose guidance_scale"
+    assert "seed" not in body, (
+        "T3 must not use seed — guidance_scale is the spec-aligned parameter"
+    )
+
+
+def test_t4_uses_strength():
+    """T4 (image-to-image) must expose `strength`, not `seed`. strength is the
+    primary control axis for image-to-image diffusers pipelines."""
+    body = _template_section("T4")
+    assert "strength" in body, "T4 must expose strength"
+    assert "seed" not in body, (
+        "T4 must not use seed — strength is the spec-aligned parameter"
+    )
+
+
+def test_t5_returns_cosine_similarity():
+    """T5 (sentence-transformers) must compute cosine similarity from two text
+    inputs and return a float. The function takes two text arguments, imports
+    `cos_sim`, and returns a float."""
+    body = _template_section("T5")
+    assert "from sentence_transformers.util import cos_sim" in body, (
+        "T5 must import cos_sim from sentence_transformers.util"
+    )
+    assert "def embed(text_a: str, text_b: str) -> float:" in body, (
+        "T5's embed function must take two text args and return float"
+    )
