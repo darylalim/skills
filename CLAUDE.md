@@ -29,15 +29,17 @@ Long lookup tables (catalogs, mappings) can live in a `<skill-name>/references/`
 
 ## App-Builder Skills
 
-All three app-builders share a single-file-app workflow that produces a `<framework>_app.py` plus tests, `pyproject.toml`, and `.env.example`. `dash-app-builder` additionally supports an Analytics Dashboard pattern with `dash-bootstrap-components`.
+The three app-builders split into one broad-scope skill and two narrow HF-card skills.
 
-### `dash-app-builder` and `gradio-app-builder`
+### `dash-app-builder` (broad scope)
 
-**Workflow:** Analyze source (including notebook URL fetching) → Classify pattern → Generate app → Code quality → Testing
+**Workflow:** Analyze source (including notebook URL fetching) → Classify pattern → Generate app → Code quality → Testing.
+
+Accepts Python scripts, Jupyter notebooks (local or notebook URLs), and GitHub URLs.
 
 **Outputs:**
-- `dash_app.py` / `gradio_app.py` — single-file app with type annotations and inline comments
-- `test_dash_app.py` / `test_gradio_app.py` — pytest unit tests for non-UI functions only
+- `dash_app.py` — single-file app with type annotations and inline comments
+- `test_dash_app.py` — pytest unit tests for non-UI functions only
 - `pyproject.toml` — uv-managed project
 - `.env.example` — all configurable env vars with placeholder defaults
 
@@ -46,19 +48,21 @@ All three app-builders share a single-file-app workflow that produces a `<framew
 pip install uv --break-system-packages  # if uv is not already available
 
 uv init --name <app-name>
-uv add <framework> python-dotenv  # plus dependencies identified in Step 1
+uv add dash python-dotenv  # plus dependencies identified in Step 1
 uv add --dev ruff ty pytest
 
-uv run ruff check --fix <app>.py && uv run ruff format <app>.py
-uv run ty check <app>.py
-uv run pytest test_<app>.py -v
+uv run ruff check --fix dash_app.py && uv run ruff format dash_app.py
+uv run ty check dash_app.py
+uv run pytest test_dash_app.py -v
 ```
 
-### `streamlit-app-builder`
+`dash-app-builder` additionally supports an Analytics Dashboard pattern with `dash-bootstrap-components`.
 
-**Workflow:** Identify HF model card URL → Classify UI pattern by `pipeline_tag` → Scaffold single-file app → Code quality → Testing
+### `streamlit-app-builder` (HF model card → local prototype)
 
-**Inputs:** HuggingFace model card URL only (`https://huggingface.co/<org>/<model>`). Other inputs (scripts, notebooks, GitHub URLs) are rejected with a redirect to `dash-app-builder` or `gradio-app-builder`.
+**Workflow:** Identify HF model card URL → Classify UI pattern by `pipeline_tag` → Scaffold single-file app → Code quality → Testing.
+
+**Inputs:** HuggingFace model card URL only (`https://huggingface.co/<org>/<model>`). Other inputs (scripts, notebooks, GitHub URLs) are rejected with a redirect to `dash-app-builder`.
 
 **Outputs:**
 - `streamlit_app.py` — single-file app: env loading, `MODEL_ID` const, gated-model gate, `@st.cache_resource`-decorated `load_model`, inference function, top-level UI body
@@ -86,6 +90,39 @@ uv run pytest test_streamlit_app.py -v
 - `streamlit-app-builder/tests/` — static validator (`ast.parse` + `ruff check --select E,F,I`) for embedded Python blocks, plus structural-consistency tests (routing-table coverage, template-name references, rejection-message sync, skip-validate marker count, file-list ↔ checklist parity, inference-function name resolution). The directory has its own `pyproject.toml` and `.venv`, independent of any scaffolded app. Run `uv run pytest` from that directory before committing changes to skill templates.
 
 See `streamlit-app-builder/SKILL.md` for the full workflow.
+
+### `gradio-app-builder` (HF model card → Hugging Face Space)
+
+**Workflow:** Identify HF model card URL → Classify UI pattern by `pipeline_tag` → Scaffold five-file Spaces project → Code quality → Testing.
+
+**Inputs:** HuggingFace model card URL only (`https://huggingface.co/<org>/<model>`). Other inputs are rejected with a redirect to `dash-app-builder`.
+
+**Outputs (canonical Spaces format):**
+- `app.py` — Spaces entry point: env loading, `MODEL_ID` const, gated-model gate, `@lru_cache(maxsize=1)`-decorated `load_model`, inference function, top-level `demo = gr.<Interface|ChatInterface>(...)`, `if __name__ == "__main__": demo.launch()`
+- `requirements.txt` — Spaces installs from this; pins `gradio==<version>` plus library-specific runtime deps
+- `README.md` — YAML frontmatter (`sdk: gradio`, `sdk_version` matching `requirements.txt`) + brief description + local-run snippet
+- `.env.example` — documents `HF_TOKEN` for gated models with a comment pointing at the Spaces Settings → Variables and secrets UI
+- `test_app.py` — pytest unit test for the inference function (mocked model); local-only, not run by Spaces
+
+**Toolchain:**
+```bash
+pip install -r requirements.txt
+pip install ruff ty pytest
+
+ruff check --fix app.py test_app.py
+ruff format app.py test_app.py
+ty check app.py
+pytest test_app.py -v
+```
+
+(No `uv init` / `pyproject.toml` for the generated app — Spaces reads `requirements.txt`.)
+
+**Repository structure:**
+- `gradio-app-builder/references/scaffolding-templates.md` — `load_model` + inference-function templates (T1-T5) plus the `test_app.py` skeleton (T6).
+- `gradio-app-builder/references/pipeline-tag-patterns.md` — UI body templates (`gr.Interface` / `gr.ChatInterface`) indexed by `pipeline_tag`.
+- `gradio-app-builder/tests/` — static validator + structural-consistency tests + Gradio-specific checks (Spaces frontmatter validity, `gr.ChatInterface` used in T2). Has its own `pyproject.toml` and `.venv`. Run `uv run pytest` from that directory before committing changes to skill templates.
+
+See `gradio-app-builder/SKILL.md` for the full workflow.
 
 ### Shared code principles
 
