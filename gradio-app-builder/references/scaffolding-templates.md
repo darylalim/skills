@@ -68,7 +68,10 @@ def chat(message: str, history: list[dict[str, str]]) -> str:
     """Generate a response from history + new message.
 
     Designed for `gr.ChatInterface(fn=chat, type="messages")`, where `history`
-    is a list of `{"role": ..., "content": ...}` dicts.
+    is a list of `{"role": ..., "content": ...}` dicts. When the tokenizer
+    lacks a `chat_template`, falls back to a generic `role: content` joined
+    prompt — best-effort; models without a chat template may produce
+    uncalibrated output.
     """
     model, tokenizer = load_model()
     messages = list(history) + [{"role": "user", "content": message}]
@@ -212,22 +215,63 @@ os.environ.setdefault("HF_TOKEN", "test-token")
 
 @pytest.fixture
 def mock_load_model(monkeypatch):
-    """Replace load_model with a stub. Override per-template per the comments below."""
+    """Replace load_model with a stub matching the in-use template.
+
+    Five stubs below — keep the one that matches your scaffolding template
+    (T1/T2/T3/T4/T5) and delete the other four at scaffold time. Each block
+    defines `_stub_factory` so the `monkeypatch.setattr` line at the bottom
+    is template-agnostic.
+    """
     import app
 
-    class _StubModel:
-        # Minimal interface — override per template:
-        # Template T1 (pipeline): callable returning [{"label": "X", "score": 0.9}]
-        # Template T2 (causal-lm): (model, tokenizer); model.generate() -> [[0,1,2]]
-        # Template T3/T4 (diffusers): __call__ -> obj with .images[0] = PIL.Image
-        # Template T5 (sentence-transformers): .encode([a, b]) returning shape (2, D)
+    # T1 (transformers pipeline). load_model returns a callable.
+    class _Stub:
         def __call__(self, *args, **kwargs):
             return [{"label": "POSITIVE", "score": 0.99}]
 
+    def _stub_factory():
+        return _Stub()
+
+    # # T2 (transformers causal-LM). load_model returns (model, tokenizer).
+    # import torch
+    # class _Tokenizer:
+    #     chat_template = None  # forces the fallback prompt path
+    #     def __call__(self, prompt, **kw):
+    #         return type("Inputs", (), {
+    #             "input_ids": type("T", (), {"shape": (1, 4)})(),
+    #             "to": lambda self, _device: self,
+    #         })()
+    #     def decode(self, ids, **kw):
+    #         return "stub response"
+    # class _Model:
+    #     device = "cpu"
+    #     def generate(self, **kw):
+    #         return torch.tensor([[0, 1, 2, 3, 4, 5]])
+    # def _stub_factory():
+    #     return _Model(), _Tokenizer()
+
+    # # T3 / T4 (diffusers). load_model returns a callable whose result has .images[0].
+    # from PIL import Image
+    # class _Stub:
+    #     def __call__(self, **kw):
+    #         out = type("Out", (), {})
+    #         out.images = [Image.new("RGB", (8, 8))]
+    #         return out
+    # def _stub_factory():
+    #     return _Stub()
+
+    # # T5 (sentence-transformers). load_model returns object with .encode([a, b]).
+    # import numpy as np
+    # class _Stub:
+    #     def encode(self, texts):
+    #         return np.array([[1.0, 0.0], [0.7, 0.7]])
+    # def _stub_factory():
+    #     return _Stub()
+
     if hasattr(app.load_model, "cache_clear"):
         app.load_model.cache_clear()
-    monkeypatch.setattr(app, "load_model", lambda: _StubModel())
-    return _StubModel
+    monkeypatch.setattr(app, "load_model", _stub_factory)
+    return _stub_factory
 
 
 def test_inference_function_returns_expected_type(mock_load_model):

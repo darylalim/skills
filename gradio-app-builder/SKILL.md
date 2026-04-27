@@ -230,6 +230,7 @@ Emit exactly two items, plus a third when the model is gated.
 
    # to deploy to Spaces:
    git init && git remote add space https://huggingface.co/spaces/<user>/<name>
+   # .env.example and test_app.py stay local — they're not part of the Space
    git add app.py requirements.txt README.md && git commit -m "init"
    git push space main
    ```
