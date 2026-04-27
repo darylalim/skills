@@ -292,3 +292,81 @@ def test_inference_function_names_resolve():
         f"Inference function names referenced in pipeline-tag-patterns.md but not "
         f"defined in scaffolding-templates.md: {sorted(unresolved)}"
     )
+
+
+# === Gradio-specific structural checks ===
+
+SEMVER_RE = re.compile(r"^\d+\.\d+(\.\d+)?$")
+README_FRONTMATTER_RE = re.compile(
+    r"^```\n---\n(.*?)\n---\n```",
+    re.MULTILINE | re.DOTALL,
+)
+
+
+def _extract_readme_frontmatter_text() -> str:
+    """Return the raw YAML lines inside SKILL.md's File 3 frontmatter block."""
+    text = SKILL_MD.read_text()
+    file3_section = re.search(
+        r"^### File 3: `README\.md`.*?\n(.*?)(?=^### |\Z)",
+        text, re.MULTILINE | re.DOTALL,
+    )
+    assert file3_section, (
+        "SKILL.md is missing the `### File 3: \\`README.md\\`` section"
+    )
+    match = README_FRONTMATTER_RE.search(file3_section.group(1))
+    assert match, "README.md frontmatter block not found in File 3 section"
+    return match.group(1)
+
+
+def _frontmatter_field(field: str) -> str | None:
+    """Return the trimmed value of a top-level YAML key, or None if absent."""
+    for line in _extract_readme_frontmatter_text().split("\n"):
+        if line.startswith(f"{field}:"):
+            return line.split(":", 1)[1].strip()
+    return None
+
+
+def test_readme_frontmatter_declares_gradio_sdk():
+    sdk = _frontmatter_field("sdk")
+    assert sdk == "gradio", f"Expected sdk: gradio, got {sdk!r}"
+
+
+def test_readme_frontmatter_has_sdk_version_placeholder():
+    sdk_version = _frontmatter_field("sdk_version")
+    assert sdk_version is not None, "sdk_version missing from README.md frontmatter"
+    # Either the literal placeholder, or a concrete semver-like version.
+    assert sdk_version == "<pinned-version>" or SEMVER_RE.match(sdk_version), (
+        f"sdk_version {sdk_version!r} is neither the documented placeholder "
+        f"nor a semver string"
+    )
+
+
+def test_readme_frontmatter_app_file_default():
+    # app_file should be absent (defaults to app.py) or explicitly "app.py".
+    app_file = _frontmatter_field("app_file")
+    if app_file is not None:
+        assert app_file in ("app.py", '"app.py"', "'app.py'"), (
+            f"app_file must be omitted or 'app.py', got {app_file!r}"
+        )
+
+
+def test_t2_uses_chat_interface():
+    """T2 must use gr.ChatInterface, not gr.Blocks. Catches drift toward streamlit-style
+    chat patterns in pipeline-tag-patterns.md's text-generation section."""
+    catalog = PIPELINE_TAG_PATTERNS_MD.read_text()
+    section = re.search(
+        r"^## Text generation / chat\s*\n.*?\n(.*?)(?=^## |\Z)",
+        catalog, re.MULTILINE | re.DOTALL,
+    )
+    assert section, (
+        "Text generation / chat section missing from pipeline-tag-patterns.md"
+    )
+    body = section.group(1)
+    assert "gr.ChatInterface(" in body, (
+        "Text generation / chat section must use gr.ChatInterface — "
+        "found no `gr.ChatInterface(` call"
+    )
+    assert "gr.Blocks(" not in body, (
+        "Text generation / chat section must NOT use gr.Blocks — "
+        "use gr.ChatInterface instead"
+    )
