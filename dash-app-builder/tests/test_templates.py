@@ -233,3 +233,148 @@ def test_skip_validate_marker_count():
         f"Expected {EXPECTED_SKIP_VALIDATE_COUNT} `<!-- skip-validate -->` markers; "
         f"found {total}. If you added a new skip, update EXPECTED_SKIP_VALIDATE_COUNT."
     )
+
+
+# === Dash-specific spec-alignment tests ===
+
+TEMPLATE_BLOCK_RE = re.compile(
+    r"^## Template (T\d+):.*?\n```python\n(.*?)```",
+    re.MULTILINE | re.DOTALL,
+)
+
+
+def _template_blocks() -> dict[str, str]:
+    """Map T<n> -> template body source."""
+    text = SCAFFOLDING_TEMPLATES_MD.read_text()
+    return {m.group(1): m.group(2) for m in TEMPLATE_BLOCK_RE.finditer(text)}
+
+
+def test_t1_contains_required_env_vars():
+    """T1 references DATASET_ID, MAX_ROWS, and HF_TOKEN."""
+    t1 = _template_blocks().get("T1", "")
+    for name in ("DATASET_ID", "MAX_ROWS", "HF_TOKEN"):
+        assert name in t1, f"T1 must reference `{name}`"
+
+
+def _is_cache_decorator(node: ast.expr) -> bool:
+    """True if `node` is a decorator expression naming lru_cache or cache."""
+    target = node.func if isinstance(node, ast.Call) else node
+    if isinstance(target, ast.Name):
+        return target.id in {"lru_cache", "cache"}
+    if isinstance(target, ast.Attribute):
+        return target.attr in {"lru_cache", "cache"}
+    return False
+
+
+def test_t1_caches_load_dataframe():
+    """The `load_dataframe` definition in T1 carries an lru_cache or cache
+    decorator (Name, Call, or Attribute access)."""
+    t1 = _template_blocks().get("T1", "")
+    tree = ast.parse(substitute_placeholders(t1))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == "load_dataframe":
+            assert any(_is_cache_decorator(d) for d in node.decorator_list), (
+                "load_dataframe must be decorated with lru_cache or cache"
+            )
+            return
+    pytest.fail("T1 must define `load_dataframe`")
+
+
+def test_t1_caps_rows():
+    """`MAX_ROWS` is referenced inside the `load_dataset(...)` call's argument
+    expressions (covers slice syntax, streaming + take, or any other in-call cap)."""
+    t1 = _template_blocks().get("T1", "")
+    tree = ast.parse(substitute_placeholders(t1))
+
+    def call_uses_max_rows(call: ast.Call) -> bool:
+        for child in ast.walk(call):
+            if isinstance(child, ast.Name) and child.id == "MAX_ROWS":
+                return True
+        return False
+
+    found = False
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "load_dataset"
+        ):
+            assert call_uses_max_rows(node), (
+                "load_dataset(...) call must reference MAX_ROWS in its arguments"
+            )
+            found = True
+    assert found, "T1 must call load_dataset(...)"
+
+
+def test_t2_returns_dash_widgets():
+    """`build_filter_for_column` returns dbc.Col(...) or None — every Return."""
+    t2 = _template_blocks().get("T2", "")
+    tree = ast.parse(substitute_placeholders(t2))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == "build_filter_for_column":
+            for ret in (n for n in ast.walk(node) if isinstance(n, ast.Return)):
+                v = ret.value
+                if v is None or (isinstance(v, ast.Constant) and v.value is None):
+                    continue  # bare `return` or `return None`
+                if (
+                    isinstance(v, ast.Call)
+                    and isinstance(v.func, ast.Attribute)
+                    and v.func.attr == "Col"
+                ):
+                    continue  # `dbc.Col(...)`
+                pytest.fail(
+                    f"build_filter_for_column has unexpected return: "
+                    f"{ast.dump(v)[:100]}"
+                )
+            return
+    pytest.fail("T2 must define `build_filter_for_column`")
+
+
+def test_t3_returns_figure():
+    """`pick_chart` is annotated `-> go.Figure` and every return yields a
+    `go.Figure(...)` constructor or a `px.<chart>(...)` call."""
+    t3 = _template_blocks().get("T3", "")
+    tree = ast.parse(substitute_placeholders(t3))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == "pick_chart":
+            ann = node.returns
+            assert ann is not None, "pick_chart must have a return annotation"
+            ann_text = ast.unparse(ann)
+            assert "Figure" in ann_text, (
+                f"pick_chart return annotation must mention Figure, got `{ann_text}`"
+            )
+            for ret in (n for n in ast.walk(node) if isinstance(n, ast.Return)):
+                v = ret.value
+                if not isinstance(v, ast.Call):
+                    pytest.fail(
+                        f"pick_chart returns non-call expression: "
+                        f"{ast.unparse(v) if v else '<None>'}"
+                    )
+                fn_text = ast.unparse(v.func)
+                ok = (
+                    "Figure" in fn_text  # go.Figure() constructor
+                    or fn_text.startswith("px.")  # plotly.express call
+                )
+                assert ok, (
+                    f"pick_chart return must be go.Figure(...) or px.<chart>(...), "
+                    f"got `{ast.unparse(v)[:80]}`"
+                )
+            return
+    pytest.fail("T3 must define `pick_chart`")
+
+
+def test_t4_contains_layout_primitives():
+    """T4 contains `dash_table.DataTable(` and `dcc.Graph(` (substring checks
+    are sufficient — both are required for the canonical UI)."""
+    t4 = _template_blocks().get("T4", "")
+    assert "dash_table.DataTable(" in t4, "T4 must contain dash_table.DataTable(...)"
+    assert "dcc.Graph(" in t4, "T4 must contain dcc.Graph(...)"
+
+
+def test_t5_covers_empty_dataframe_edge_case():
+    """T5 contains a test function whose name matches `test_pick_chart_empty*`."""
+    t5 = _template_blocks().get("T5", "")
+    pattern = re.compile(r"^def (test_pick_chart_empty\w*)\(", re.MULTILINE)
+    assert pattern.search(t5), (
+        "T5 must define a test function named `test_pick_chart_empty*`"
+    )
