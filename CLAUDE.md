@@ -35,7 +35,7 @@ All three app-builders narrow to HF-card inputs: dataset cards (dash) and model 
 
 **Workflow:** Identify HF dataset URL → Classify tabular vs reject → Scaffold → Code quality → Testing.
 
-**Inputs:** HuggingFace dataset card URL only (`https://huggingface.co/datasets/<org>/<dataset>`). Other inputs (scripts, notebooks, GitHub URLs, model card URLs, ad-hoc data) are rejected with a redirect message; non-tabular dataset modalities (image, audio, video, sequence-typed features) are rejected with a separate modality-specific message.
+**Inputs:** HuggingFace dataset card URL only (`https://huggingface.co/datasets/<org>/<dataset>`). Other inputs (scripts, notebooks, GitHub URLs, model card URLs, ad-hoc data) are rejected with a message; non-tabular dataset modalities (image, audio, video, sequence-typed features) are rejected with a separate modality-specific message.
 
 **Outputs:**
 - `dash_app.py` — single-file app: env loading, `DATASET_ID` const, gated-dataset gate (when applicable), `@lru_cache(maxsize=1)`-decorated `load_dataframe`, `build_filter_for_column` factory, `pick_chart` heuristic, top-level `app.layout` + `@callback`
