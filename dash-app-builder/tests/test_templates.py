@@ -136,3 +136,100 @@ def test_block_passes_ruff_check(block):
         pytest.fail(
             f"{block.source_file.name}:{block.line_no} ruff failures:\n{output}"
         )
+
+
+# === Structural consistency tests ===
+
+SCAFFOLDING_TEMPLATES_MD = SKILL_ROOT / "references" / "scaffolding-templates.md"
+SKILL_MD = SKILL_ROOT / "SKILL.md"
+
+TEMPLATE_HEADING_RE = re.compile(r"^## Template (T\d+):", re.MULTILINE)
+TEMPLATE_REF_RE = re.compile(r"\bT\d+\b")
+DEF_RE = re.compile(r"^def (\w+)\(", re.MULTILINE)
+
+
+def test_template_references_resolve():
+    """Every T<n> referenced in SKILL.md has a `## Template T<n>:` heading
+    in scaffolding-templates.md."""
+    defined = set(TEMPLATE_HEADING_RE.findall(SCAFFOLDING_TEMPLATES_MD.read_text()))
+    referenced = set(TEMPLATE_REF_RE.findall(SKILL_MD.read_text()))
+    unresolved = referenced - defined
+    assert not unresolved, (
+        f"Template names referenced in SKILL.md but not defined in "
+        f"scaffolding-templates.md: {sorted(unresolved)}"
+    )
+
+
+WRONG_SKILL_MSG = (
+    "This skill builds Dash apps from Hugging Face dataset cards "
+    "(`huggingface.co/datasets/<org>/<dataset>`). For scripts, notebooks, or "
+    "other inputs, use a general-purpose Dash app prompt without this skill."
+)
+WRONG_MODALITY_MSG_PREFIX = (
+    "This skill builds Dash apps from **tabular** Hugging Face datasets."
+)
+
+
+def test_wrong_skill_rejection_message_present():
+    """The wrong-skill rejection message appears verbatim in SKILL.md."""
+    text = SKILL_MD.read_text()
+    assert WRONG_SKILL_MSG in text, (
+        "Wrong-skill rejection message missing or changed in SKILL.md"
+    )
+
+
+def test_wrong_modality_rejection_message_present():
+    """The wrong-modality rejection message prefix appears in SKILL.md."""
+    text = SKILL_MD.read_text()
+    assert WRONG_MODALITY_MSG_PREFIX in text, (
+        "Wrong-modality rejection message missing or changed in SKILL.md"
+    )
+
+
+STEP3_FILE_HEADING_RE = re.compile(r"^### File \d+: `([^`]+)`", re.MULTILINE)
+CHECKLIST_FILES_RE = re.compile(r"^- \[ \] Four files created: (.+)$", re.MULTILINE)
+
+
+def test_step3_files_match_output_checklist():
+    """The four file paths under SKILL.md Step 3's `### File N:` sub-headings
+    match the list in the Output checklist's `Four files created:` line."""
+    text = SKILL_MD.read_text()
+    step3 = set(STEP3_FILE_HEADING_RE.findall(text))
+    checklist_match = CHECKLIST_FILES_RE.search(text)
+    assert checklist_match, "Output checklist's 'Four files created:' line not found"
+    checklist = set(re.findall(r"`([^`]+)`", checklist_match.group(1)))
+    assert step3 == checklist, (
+        f"Step 3 sub-headings list {sorted(step3)} but Output checklist lists "
+        f"{sorted(checklist)}"
+    )
+
+
+HELPER_FUNCTIONS = ("load_dataframe", "build_filter_for_column", "pick_chart")
+
+
+def test_helper_function_names_resolve_uniquely():
+    """Each helper function name appears exactly once as a `def` across
+    scaffolding-templates.md."""
+    templates = SCAFFOLDING_TEMPLATES_MD.read_text()
+    for fname in HELPER_FUNCTIONS:
+        count = len(re.findall(rf"^def {fname}\(", templates, re.MULTILINE))
+        assert count == 1, (
+            f"Helper `{fname}` defined {count} times in scaffolding-templates.md "
+            f"(expected exactly 1)"
+        )
+
+
+EXPECTED_SKIP_VALIDATE_COUNT = 1
+
+
+def test_skip_validate_marker_count():
+    """Total skip-validate markers across both Markdown files is asserted against
+    an expected value to catch accidental additions."""
+    total = 0
+    for f in (SKILL_MD, SCAFFOLDING_TEMPLATES_MD):
+        if f.exists():
+            total += f.read_text().count(SKIP_MARKER)
+    assert total == EXPECTED_SKIP_VALIDATE_COUNT, (
+        f"Expected {EXPECTED_SKIP_VALIDATE_COUNT} `<!-- skip-validate -->` markers; "
+        f"found {total}. If you added a new skip, update EXPECTED_SKIP_VALIDATE_COUNT."
+    )
