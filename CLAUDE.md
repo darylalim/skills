@@ -67,7 +67,7 @@ See `dash-app-builder/SKILL.md` for the full workflow.
 
 **Workflow:** Identify HF model card URL → Classify UI pattern by `pipeline_tag` → Scaffold single-file app → Code quality → Testing.
 
-**Inputs:** HuggingFace model card URL only (`https://huggingface.co/<org>/<model>`). Other inputs (scripts, notebooks, GitHub URLs) are rejected with a redirect to `dash-app-builder`.
+**Inputs:** HuggingFace model card URL only (`https://huggingface.co/<org>/<model>`). Other inputs (scripts, notebooks, GitHub URLs) are rejected with a message; use a general-purpose Streamlit prompt for those.
 
 **Outputs:**
 - `streamlit_app.py` — single-file app: env loading, `MODEL_ID` const, gated-model gate, `@st.cache_resource`-decorated `load_model`, inference function, top-level UI body
@@ -100,7 +100,7 @@ See `streamlit-app-builder/SKILL.md` for the full workflow.
 
 **Workflow:** Identify HF model card URL → Classify UI pattern by `pipeline_tag` → Scaffold five-file Spaces project → Code quality → Testing.
 
-**Inputs:** HuggingFace model card URL only (`https://huggingface.co/<org>/<model>`). Other inputs are rejected with a redirect to `dash-app-builder`.
+**Inputs:** HuggingFace model card URL only (`https://huggingface.co/<org>/<model>`). Other inputs are rejected with a message; use a general-purpose Gradio prompt for those.
 
 **Outputs (canonical Spaces format):**
 - `app.py` — Spaces entry point: env loading, `MODEL_ID` const, gated-model gate, `@lru_cache(maxsize=1)`-decorated `load_model`, inference function, top-level `demo = gr.<Interface|ChatInterface>(...)`, `if __name__ == "__main__": demo.launch()`
