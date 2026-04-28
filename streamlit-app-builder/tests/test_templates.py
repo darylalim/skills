@@ -290,3 +290,19 @@ def test_inference_function_names_resolve():
         f"Inference function names referenced in pipeline-tag-patterns.md but not "
         f"defined in scaffolding-templates.md: {sorted(unresolved)}"
     )
+
+
+WRONG_SKILL_MSG = (
+    "Pass an HF model card URL (`huggingface.co/<org>/<model>`). "
+    "For Python scripts or notebooks on GitHub, use a general-purpose "
+    "Streamlit prompt without this skill."
+)
+
+
+def test_wrong_skill_rejection_message_present():
+    """The wrong-skill rejection message appears verbatim in SKILL.md.
+    Locks in the post-narrowing wording so future drift is caught."""
+    text = SKILL_MD.read_text()
+    assert WRONG_SKILL_MSG in text, (
+        "Wrong-skill rejection message missing or changed in SKILL.md"
+    )
