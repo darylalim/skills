@@ -281,7 +281,7 @@ def test_pick_chart_numeric_plus_categorical(_mock):
     assert isinstance(fig, go.Figure)
     assert fig.data[0].type == "histogram"
     # color creates multiple traces
-    assert len(fig.data) >= 1
+    assert len(fig.data) >= 2
 
 
 @patch("dash_app.load_dataframe", return_value=_df_categorical_only())
