@@ -29,34 +29,39 @@ Long lookup tables (catalogs, mappings) can live in a `<skill-name>/references/`
 
 ## App-Builder Skills
 
-The three app-builders split into one broad-scope skill and two narrow HF-card skills.
+All three app-builders narrow to HF-card inputs: dataset cards (dash) and model cards (streamlit, gradio).
 
-### `dash-app-builder` (broad scope)
+### `dash-app-builder` (HF dataset card → minimal Dash app)
 
-**Workflow:** Analyze source (including notebook URL fetching) → Classify pattern → Generate app → Code quality → Testing.
+**Workflow:** Identify HF dataset URL → Classify tabular vs reject → Scaffold → Code quality → Testing.
 
-Accepts Python scripts, Jupyter notebooks (local or notebook URLs), and GitHub URLs.
+**Inputs:** HuggingFace dataset card URL only (`https://huggingface.co/datasets/<org>/<dataset>`). Other inputs (scripts, notebooks, GitHub URLs, model card URLs, ad-hoc data) are rejected with a redirect message; non-tabular dataset modalities (image, audio, video, sequence-typed features) are rejected with a separate modality-specific message.
 
 **Outputs:**
-- `dash_app.py` — single-file app with type annotations and inline comments
-- `test_dash_app.py` — pytest unit tests for non-UI functions only
-- `pyproject.toml` — uv-managed project
-- `.env.example` — all configurable env vars with placeholder defaults
+- `dash_app.py` — single-file app: env loading, `DATASET_ID` const, gated-dataset gate (when applicable), `@lru_cache(maxsize=1)`-decorated `load_dataframe`, `build_filter_for_column` factory, `pick_chart` heuristic, top-level `app.layout` + `@callback`
+- `test_dash_app.py` — pytest unit tests for `build_filter_for_column`, `pick_chart`, and a smoke test for the cache decorator
+- `pyproject.toml` — uv-managed
+- `.env.example` — documents `HF_TOKEN` (gated datasets) and `MAX_ROWS` (row cap, default 10000)
 
 **Toolchain:**
 ```bash
-pip install uv --break-system-packages  # if uv is not already available
+pip install uv --break-system-packages
 
-uv init --name <app-name>
-uv add dash python-dotenv  # plus dependencies identified in Step 1
+uv init --name dash-app
+uv add dash dash-bootstrap-components plotly pandas python-dotenv datasets huggingface-hub
 uv add --dev ruff ty pytest
 
-uv run ruff check --fix dash_app.py && uv run ruff format dash_app.py
+uv run ruff check --fix dash_app.py test_dash_app.py
+uv run ruff format dash_app.py test_dash_app.py
 uv run ty check dash_app.py
 uv run pytest test_dash_app.py -v
 ```
 
-`dash-app-builder` additionally supports an Analytics Dashboard pattern with `dash-bootstrap-components`.
+**Repository structure:**
+- `dash-app-builder/references/scaffolding-templates.md` — T1 (loader+gate), T2 (filter-widget factory), T3 (auto-chart heuristic), T4 (layout+callback), T5 (`test_dash_app.py` skeleton).
+- `dash-app-builder/tests/` — static validator (`ast.parse` + `ruff check --select E,F,I`) for embedded Python blocks, plus structural-consistency tests (template-name references, rejection-message presence, file-list ↔ checklist parity, helper-function name resolution, skip-validate marker count) and Dash-specific spec-alignment checks (T1 env-vars + cache + row cap, T2 widget returns, T3 Figure return, T4 layout primitives, T5 empty-DataFrame edge case). Has its own `pyproject.toml` and `.venv`. Run `uv run pytest` from that directory before committing changes to skill templates.
+
+See `dash-app-builder/SKILL.md` for the full workflow.
 
 ### `streamlit-app-builder` (HF model card → local prototype)
 
@@ -128,5 +133,5 @@ See `gradio-app-builder/SKILL.md` for the full workflow.
 
 - Wrap original logic — don't rewrite it
 - Load config from `.env` via `python-dotenv`; always generate `.env.example`
-- Cache model loading: `@lru_cache(maxsize=1)` (dash, gradio) or `@st.cache_resource` (streamlit)
+- Cache model/dataset loading: `@lru_cache(maxsize=1)` (dash, gradio) or `@st.cache_resource` (streamlit)
 - Test underlying Python functions only, not UI callbacks or wiring
