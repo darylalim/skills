@@ -135,7 +135,7 @@ def pick_chart(df: pd.DataFrame) -> go.Figure:
 <!-- skip-validate -->
 ```python
 import dash
-from dash import dcc, html, dash_table, callback, Input, Output, ALL
+from dash import dcc, html, dash_table, callback, Input, Output, State, ALL
 import dash_bootstrap_components as dbc
 import pandas as pd
 
@@ -178,7 +178,7 @@ app.layout = dbc.Container([
     Output("data-table", "data"),
     Output("data-chart", "figure"),
     Input({"role": "filter", "col": ALL}, "value"),
-    Input({"role": "filter", "col": ALL}, "id"),
+    State({"role": "filter", "col": ALL}, "id"),
 )
 def refresh(filter_values: list, filter_ids: list):
     """Apply each pattern-matched filter to the loaded DataFrame, then update KPIs,
@@ -222,10 +222,20 @@ from unittest.mock import patch
 
 import pandas as pd
 import plotly.graph_objects as go
+import pytest
 
 # Bypass T1's gated-gate (when emitted) by setting HF_TOKEN before dash_app is
 # lazily imported inside each test function below.
 os.environ.setdefault("HF_TOKEN", "test-token")
+
+
+@pytest.fixture(autouse=True)
+def _stub_load_dataframe():
+    """Prevent the real dataset load on first dash_app import. Each test
+    passes its own DataFrame to the function under test, so the mock's
+    return value is just a placeholder."""
+    with patch("dash_app.load_dataframe", return_value=pd.DataFrame()):
+        yield
 
 
 def _df_numeric_only() -> pd.DataFrame:
@@ -243,8 +253,7 @@ def _df_mixed() -> pd.DataFrame:
     })
 
 
-@patch("dash_app.load_dataframe", return_value=_df_mixed())
-def test_build_filter_numeric(_mock):
+def test_build_filter_numeric():
     from dash_app import build_filter_for_column
     df = _df_mixed()
     widget = build_filter_for_column(df, "value")
@@ -254,8 +263,7 @@ def test_build_filter_numeric(_mock):
     assert type(inner).__name__ == "RangeSlider"
 
 
-@patch("dash_app.load_dataframe", return_value=_df_mixed())
-def test_build_filter_low_cardinality_categorical(_mock):
+def test_build_filter_low_cardinality_categorical():
     from dash_app import build_filter_for_column
     df = _df_mixed()
     widget = build_filter_for_column(df, "label")
@@ -264,26 +272,20 @@ def test_build_filter_low_cardinality_categorical(_mock):
     assert type(inner).__name__ == "Dropdown"
 
 
-@patch(
-    "dash_app.load_dataframe",
-    return_value=pd.DataFrame({"s": [f"v{i}" for i in range(100)]}),
-)
-def test_build_filter_high_cardinality_returns_none(_mock):
+def test_build_filter_high_cardinality_returns_none():
     from dash_app import build_filter_for_column
     df = pd.DataFrame({"s": [f"v{i}" for i in range(100)]})
     assert build_filter_for_column(df, "s") is None
 
 
-@patch("dash_app.load_dataframe", return_value=_df_numeric_only())
-def test_pick_chart_numeric_column(_mock):
+def test_pick_chart_numeric_column():
     from dash_app import pick_chart
     fig = pick_chart(_df_numeric_only())
     assert isinstance(fig, go.Figure)
     assert fig.data[0].type == "histogram"
 
 
-@patch("dash_app.load_dataframe", return_value=_df_mixed())
-def test_pick_chart_numeric_plus_categorical(_mock):
+def test_pick_chart_numeric_plus_categorical():
     from dash_app import pick_chart
     fig = pick_chart(_df_mixed())
     assert isinstance(fig, go.Figure)
@@ -292,16 +294,14 @@ def test_pick_chart_numeric_plus_categorical(_mock):
     assert len(fig.data) >= 2
 
 
-@patch("dash_app.load_dataframe", return_value=_df_categorical_only())
-def test_pick_chart_categorical_only(_mock):
+def test_pick_chart_categorical_only():
     from dash_app import pick_chart
     fig = pick_chart(_df_categorical_only())
     assert isinstance(fig, go.Figure)
     assert fig.data[0].type == "bar"
 
 
-@patch("dash_app.load_dataframe", return_value=pd.DataFrame())
-def test_pick_chart_empty_dataframe(_mock):
+def test_pick_chart_empty_dataframe():
     from dash_app import pick_chart
     fig = pick_chart(pd.DataFrame())
     assert isinstance(fig, go.Figure)
@@ -309,8 +309,7 @@ def test_pick_chart_empty_dataframe(_mock):
     assert any("No data" in (a.text or "") for a in fig.layout.annotations)
 
 
-@patch("dash_app.load_dataframe", return_value=_df_mixed())
-def test_load_dataframe_is_cached(_mock):
+def test_load_dataframe_is_cached():
     from dash_app import load_dataframe
     # lru_cache exposes __wrapped__ on the wrapper
     assert hasattr(load_dataframe, "__wrapped__")
