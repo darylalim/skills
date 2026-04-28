@@ -44,6 +44,8 @@ NON_TABULAR_TASK_TAGS = {
 }
 ```
 
+This check runs before the tabular-tag check below, so rejection wins if `task_categories` contains both a non-tabular and a tabular tag.
+
 3. **Accept on tabular tags.** If `task_categories` overlaps with this set, accept and skip schema inspection:
 
 ```python
@@ -55,7 +57,7 @@ TABULAR_TASK_TAGS = {
 }
 ```
 
-4. **Otherwise, inspect the schema.** Call `datasets.load_dataset(<dataset_id>, split="train", streaming=True)` and check `.features`. Tabular if every top-level feature is `Value` (`int*`, `float*`, `string`, `bool`) or `ClassLabel`. Reject if any `Image`, `Audio`, `Sequence`, `Array2D`/`Array3D`, or nested `Features` is present.
+4. **Otherwise, inspect the schema.** Call `datasets.load_dataset(<dataset_id>, split="train", streaming=True)` and check `.features`. If `train` isn't available, fall back to `datasets.get_dataset_split_names(<dataset_id>, token=HF_TOKEN)[0]` to pick the first declared split. Tabular if every top-level feature is `Value` (`int*`, `float*`, `string`, `bool`) or `ClassLabel`. Reject if any `Image`, `Audio`, `Sequence`, `Array2D`/`Array3D`, or nested `Features` is present.
 
 The wrong-modality rejection message:
 
