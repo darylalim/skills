@@ -371,6 +371,14 @@ def test_t4_contains_layout_primitives():
     assert "dcc.Graph(" in t4, "T4 must contain dcc.Graph(...)"
 
 
+def test_t4_parses_cleanly():
+    """T4 has cross-template references that fail F821 in standalone lint
+    (and thus carries a skip-validate marker), but it must still parse as
+    valid Python — `ast.parse` doesn't care about undefined names."""
+    t4 = _template_blocks().get("T4", "")
+    ast.parse(substitute_placeholders(t4))
+
+
 def test_t5_covers_empty_dataframe_edge_case():
     """T5 contains a test function whose name matches `test_pick_chart_empty*`."""
     t5 = _template_blocks().get("T5", "")
