@@ -92,7 +92,7 @@ uv run pytest test_streamlit_app.py -v
 **Repository structure:**
 - `streamlit-app-builder/references/scaffolding-templates.md` — `load_model` + inference-function templates (T1-T5) plus the `test_streamlit_app.py` skeleton (T6).
 - `streamlit-app-builder/references/pipeline-tag-patterns.md` — UI body templates indexed by `pipeline_tag`.
-- `streamlit-app-builder/tests/` — static validator (`ast.parse` + `ruff check --select E,F,I`) for embedded Python blocks, plus structural-consistency tests (routing-table coverage, template-name references, rejection-message sync, skip-validate marker count, file-list ↔ checklist parity, inference-function name resolution). The directory has its own `pyproject.toml` and `.venv`, independent of any scaffolded app. Run `uv run pytest` from that directory before committing changes to skill templates.
+- `streamlit-app-builder/tests/` — static validator (`ast.parse` + `ruff check --select E,F,I`) for embedded Python blocks, plus structural-consistency tests (routing-table coverage, template-name references, rejection-message sync, wrong-skill rejection message presence, skip-validate marker count, file-list ↔ checklist parity, inference-function name resolution). Has its own `pyproject.toml` and `.venv`. Run `uv run pytest` from that directory before committing changes to skill templates.
 
 See `streamlit-app-builder/SKILL.md` for the full workflow.
 
@@ -125,7 +125,7 @@ pytest test_app.py -v
 **Repository structure:**
 - `gradio-app-builder/references/scaffolding-templates.md` — `load_model` + inference-function templates (T1-T5) plus the `test_app.py` skeleton (T6).
 - `gradio-app-builder/references/pipeline-tag-patterns.md` — UI body templates (`gr.Interface` / `gr.ChatInterface`) indexed by `pipeline_tag`.
-- `gradio-app-builder/tests/` — static validator + structural-consistency tests + Gradio-specific checks (Spaces frontmatter validity, `gr.ChatInterface` in T2, `guidance_scale` in T3, `strength` in T4, cosine-similarity return in T5). Has its own `pyproject.toml` and `.venv`. Run `uv run pytest` from that directory before committing changes to skill templates.
+- `gradio-app-builder/tests/` — static validator (`ast.parse` + `ruff check --select E,F,I`) for embedded Python blocks, plus structural-consistency tests (routing-table coverage, template-name references, rejection-message sync, wrong-skill rejection message presence, skip-validate marker count, file-list ↔ checklist parity, inference-function name resolution) and Gradio-specific checks (Spaces frontmatter validity, `gr.ChatInterface` in T2, `guidance_scale` in T3, `strength` in T4, cosine-similarity return in T5). Has its own `pyproject.toml` and `.venv`. Run `uv run pytest` from that directory before committing changes to skill templates.
 
 See `gradio-app-builder/SKILL.md` for the full workflow.
 
