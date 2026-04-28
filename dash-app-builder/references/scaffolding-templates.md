@@ -214,17 +214,18 @@ if __name__ == "__main__":
 
 ## Template T5: `test_dash_app.py` skeleton
 
-<!-- skip-validate -->
 ```python
 """Unit tests for dash_app helper functions. Tests the underlying Python only —
 no Dash callback or layout testing."""
 import os
-os.environ.setdefault("HF_TOKEN", "test-token")  # bypass gated-gate when emitted
-
 from unittest.mock import patch
 
 import pandas as pd
 import plotly.graph_objects as go
+
+# Bypass T1's gated-gate (when emitted) by setting HF_TOKEN before dash_app is
+# lazily imported inside each test function below.
+os.environ.setdefault("HF_TOKEN", "test-token")
 
 
 def _df_numeric_only() -> pd.DataFrame:
