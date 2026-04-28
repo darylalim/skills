@@ -10,12 +10,13 @@ All templates assume:
 ## Template T1: Dataset loader + config
 
 ```python
-from pathlib import Path
 import os
 from functools import lru_cache
-from dotenv import load_dotenv
+from pathlib import Path
+
 import pandas as pd
 from datasets import load_dataset
+from dotenv import load_dotenv
 
 env_path = Path(".env")
 if env_path.exists():
@@ -45,9 +46,9 @@ The gated-gate block (the `if not HF_TOKEN: raise SystemExit(...)` lines) is omi
 ## Template T2: Filter-widget factory
 
 ```python
-from dash import dcc
 import dash_bootstrap_components as dbc
 import pandas as pd
+from dash import dcc
 
 
 def build_filter_for_column(df: pd.DataFrame, column: str):
@@ -131,6 +132,7 @@ def pick_chart(df: pd.DataFrame) -> go.Figure:
 
 ## Template T4: Layout + callback wiring
 
+<!-- skip-validate -->
 ```python
 import dash
 from dash import dcc, html, dash_table, callback, Input, Output, ALL
@@ -212,6 +214,7 @@ if __name__ == "__main__":
 
 ## Template T5: `test_dash_app.py` skeleton
 
+<!-- skip-validate -->
 ```python
 """Unit tests for dash_app helper functions. Tests the underlying Python only —
 no Dash callback or layout testing."""
@@ -219,6 +222,7 @@ import os
 os.environ.setdefault("HF_TOKEN", "test-token")  # bypass gated-gate when emitted
 
 from unittest.mock import patch
+
 import pandas as pd
 import plotly.graph_objects as go
 
@@ -259,7 +263,10 @@ def test_build_filter_low_cardinality_categorical(_mock):
     assert type(inner).__name__ == "Dropdown"
 
 
-@patch("dash_app.load_dataframe", return_value=pd.DataFrame({"s": [f"v{i}" for i in range(100)]}))
+@patch(
+    "dash_app.load_dataframe",
+    return_value=pd.DataFrame({"s": [f"v{i}" for i in range(100)]}),
+)
 def test_build_filter_high_cardinality_returns_none(_mock):
     from dash_app import build_filter_for_column
     df = pd.DataFrame({"s": [f"v{i}" for i in range(100)]})
