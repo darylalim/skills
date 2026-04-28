@@ -7,8 +7,7 @@ description: >
   for an HF model", "turn an HF model card into a Streamlit demo", "scaffold a
   Streamlit app for an HF inference model", any URL of the shape
   `huggingface.co/<org>/<model>`. Skip when the input is a Python script, a
-  Jupyter notebook, a GitHub URL, or any non-HF artifact — the
-  dash-app-builder skill is the right alternative.
+  Jupyter notebook, a GitHub URL, or any non-HF artifact.
 ---
 
 # Streamlit App Builder (HF model card → prototype)
@@ -19,13 +18,13 @@ Generate a single-file Streamlit prototype from a HuggingFace model card URL. Ou
 
 **Use:** the user passes a `huggingface.co/<org>/<model>` URL and wants a working Streamlit demo.
 
-**Don't use** (redirect explicitly):
-- Python script (`.py` file path or `github.com/.../*.py` blob URL) → `dash-app-builder`
-- Jupyter notebook (`.ipynb`) → `dash-app-builder`
-- GitHub repo root URL → `dash-app-builder`
+**Don't use** (reject explicitly):
+- Python script (`.py` file path or `github.com/.../*.py` blob URL) — not supported
+- Jupyter notebook (`.ipynb`) — not supported
+- GitHub repo root URL — not supported
 - `huggingface.co/datasets/...`, `huggingface.co/spaces/...` — not supported
 
-When rejecting, emit a one-line message naming the right alternative skill.
+When rejecting, emit a one-line message telling the user the input shape isn't supported.
 
 ## Non-goals (silent — no need to surface in the report)
 
@@ -43,8 +42,8 @@ When rejecting, emit a one-line message naming the right alternative skill.
 The input MUST be an HF model card URL of the shape `https://huggingface.co/<org>/<model>` (with or without trailing slash; query strings and fragments are stripped before classification).
 
 **Reject early** with a clear message if the input is any other URL shape:
-- `github.com/...` (any path) → *"Pass an HF model card URL (`huggingface.co/<org>/<model>`). For Python scripts or notebooks on GitHub, use the `dash-app-builder` skill."*
-- `*.ipynb` URL → same redirect to `dash-app-builder`.
+- `github.com/...` (any path) → *"Pass an HF model card URL (`huggingface.co/<org>/<model>`). For Python scripts or notebooks on GitHub, use a general-purpose Streamlit prompt without this skill."*
+- `*.ipynb` URL → same redirect message as above.
 - `huggingface.co/datasets/...` or `huggingface.co/spaces/...` → *"This skill scaffolds prototypes from model cards only. Datasets and Spaces are not supported."*
 - File path or any other shape → *"Pass an HF model card URL (`huggingface.co/<org>/<model>`)."*
 
