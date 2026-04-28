@@ -43,7 +43,7 @@ The input MUST be an HF model card URL of the shape `https://huggingface.co/<org
 
 **Reject early** with a clear message if the input is any other URL shape:
 - `github.com/...` (any path) → *"Pass an HF model card URL (`huggingface.co/<org>/<model>`). For Python scripts or notebooks on GitHub, use a general-purpose Streamlit prompt without this skill."*
-- `*.ipynb` URL → same redirect message as above.
+- `*.ipynb` URL → same rejection message as above.
 - `huggingface.co/datasets/...` or `huggingface.co/spaces/...` → *"This skill scaffolds prototypes from model cards only. Datasets and Spaces are not supported."*
 - File path or any other shape → *"Pass an HF model card URL (`huggingface.co/<org>/<model>`)."*
 
