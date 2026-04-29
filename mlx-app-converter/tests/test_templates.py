@@ -204,3 +204,113 @@ def test_t5_prints_removal_hint():
     assert "transformers and torch may now be unused" in section, (
         "T5 missing the standard removal-hint phrase"
     )
+
+
+# === Structural consistency tests ===
+
+SKILL_MD = SKILL_ROOT / "SKILL.md"
+
+TEMPLATE_HEADING_RE = re.compile(r"^## Template (T\d+):", re.MULTILINE)
+TEMPLATE_REF_RE = re.compile(r"\bT\d+\b")
+
+REJECTION_MESSAGES = [
+    # gate 1 — wrong skill
+    "mlx-app-converter operates on an existing Streamlit or Gradio app file in the current working directory. For other inputs, use the appropriate skill (streamlit-app-builder, gradio-app-builder) or a general-purpose prompt.",
+    # gate 2 — hardware
+    "MLX requires Apple Silicon (arm64 macOS). Detected: <machine>/<system>. Run this skill on an Apple Silicon Mac.",
+    # gate 3 — app file not found
+    "No app file found. Expected one of app.py, streamlit_app.py, gradio_app.py in the current directory.",
+    # gate 3' — multiple app files
+    "Found multiple app files: <list>. Tell me which one to convert.",
+    # gate 4 — framework
+    "does not import streamlit or gradio at the top level. mlx-app-converter only supports Streamlit and Gradio apps.",
+    # gate 5 — git-clean
+    "Commit or stash before running mlx-app-converter so the rewrite is reviewable via git diff.",
+    # gate 6 — no detectable models
+    "No HF model IDs found in",
+    "mlx-app-converter requires statically-known model IDs (string literal or simple constant). Dynamic IDs (env var, UI input) are not supported in v1.",
+    # gate 7 — no MLX variants (soft)
+    "No MLX variants found for",
+    "Pick one or reply \"skip\" to leave this model unchanged.",
+    # gate 8 — dynamic model arg (soft)
+    "model ID is dynamic (env var or runtime input). v1 supports only statically-known model IDs.",
+]
+
+
+def test_template_references_resolve():
+    """Every T<n> in SKILL.md has a matching `## Template T<n>:` heading in
+    rewrite-templates.md."""
+    defined = set(TEMPLATE_HEADING_RE.findall(REWRITE_TEMPLATES_MD.read_text()))
+    referenced = set(TEMPLATE_REF_RE.findall(SKILL_MD.read_text()))
+    unresolved = referenced - defined
+    assert not unresolved, (
+        f"Template names referenced in SKILL.md but not defined in "
+        f"rewrite-templates.md: {sorted(unresolved)}"
+    )
+
+
+def test_all_rejection_messages_present_in_skill_md():
+    """Every rejection message snippet from the spec appears in SKILL.md."""
+    skill_text = SKILL_MD.read_text()
+    missing = [msg for msg in REJECTION_MESSAGES if msg not in skill_text]
+    assert not missing, (
+        "Rejection messages missing from SKILL.md:\n  - "
+        + "\n  - ".join(missing)
+    )
+
+
+def test_skip_validate_marker_count_is_zero():
+    """rewrite-templates.md must have zero `<!-- skip-validate -->` markers.
+    Every code block must be valid standalone."""
+    text = REWRITE_TEMPLATES_MD.read_text()
+    count = text.count(SKIP_MARKER)
+    assert count == 0, (
+        f"rewrite-templates.md has {count} skip-validate markers; "
+        f"expected 0. Fix the underlying template instead."
+    )
+
+
+OUTPUTS_FILES_RE = re.compile(r"^- `([^`]+)`", re.MULTILINE)
+
+
+def _files_in_outputs_section() -> set[str]:
+    """Extract file references from the SKILL.md '## Outputs (in-place edits)' section."""
+    text = SKILL_MD.read_text()
+    section = re.search(
+        r"^## Outputs \(in-place edits\).*?\n(.*?)(?=^## |\Z)",
+        text, re.MULTILINE | re.DOTALL,
+    )
+    assert section, "SKILL.md missing '## Outputs (in-place edits)' section"
+    return set(OUTPUTS_FILES_RE.findall(section.group(1)))
+
+
+def _files_in_pipeline_section() -> set[str]:
+    """Extract file references from the SKILL.md '## Workflow' section."""
+    text = SKILL_MD.read_text()
+    section = re.search(
+        r"^## Workflow.*?\n(.*?)(?=^## |\Z)",
+        text, re.MULTILINE | re.DOTALL,
+    )
+    assert section, "SKILL.md missing '## Workflow' section"
+    return set(re.findall(r"`([^`]+\.(?:py|toml|txt|example))`", section.group(1)))
+
+
+def test_outputs_section_files_referenced_in_workflow():
+    """Every concrete file mentioned in '## Outputs' is also referenced in '## Workflow'.
+
+    The check is one-way: outputs ⊆ workflow. The workflow may mention
+    additional files (intermediate paths) that aren't outputs; that's OK.
+    """
+    outputs_files = _files_in_outputs_section()
+    workflow_files = _files_in_pipeline_section()
+
+    # Normalize: outputs may use generic patterns ("test_*.py", "<app file>");
+    # for parity, only check files that look like concrete paths.
+    concrete_outputs = {
+        f for f in outputs_files
+        if not f.startswith("<") and "*" not in f
+    }
+    missing = concrete_outputs - workflow_files
+    assert not missing, (
+        f"Files in Outputs section but not referenced in Workflow: {sorted(missing)}"
+    )
