@@ -39,3 +39,14 @@ This directory has its own `pyproject.toml` and `.venv`, independent of any user
 ## Skipping a block
 
 Add `<!-- skip-validate -->` on the line immediately above the ` ```python ` fence. Use sparingly. None should be needed for `rewrite-templates.md`; the structural test enforces this.
+
+## End-to-end testing
+
+The static tests in this directory verify that documentation invariants hold,
+but don't exercise the actual rewrite. For end-to-end verification, see
+`mlx-app-converter/manual-tests/README.md` — it contains sample fixture apps
+and a checklist of expected-output invariants for a human running the skill
+against the fixtures.
+
+Run manual tests after modifying any T1-T5 template, SKILL.md Step 5, or
+`lib/variant_resolution.py`.
