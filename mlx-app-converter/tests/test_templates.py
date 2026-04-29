@@ -77,3 +77,9 @@ def test_t3_contains_apple_silicon_check():
     assert 'platform.system() == "Darwin"' in section, (
         "T3 missing platform.system() == \"Darwin\" check"
     )
+
+
+def test_t4_mocks_mlx_lm_load():
+    """T4 must show the mock target as mlx_lm.load (not from_pretrained)."""
+    section = _template_section("T4")
+    assert "mlx_lm.load" in section, "T4 missing mlx_lm.load as mock target"
