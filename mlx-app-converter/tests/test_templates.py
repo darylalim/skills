@@ -66,3 +66,14 @@ def test_t2_documents_sampler_helper_construction():
     assert "from mlx_lm.sample_utils import" in section, (
         "T2 missing the sample_utils import showing helper origin"
     )
+
+
+def test_t3_contains_apple_silicon_check():
+    """T3 must contain the literal platform.machine and platform.system checks."""
+    section = _template_section("T3")
+    assert 'platform.machine() == "arm64"' in section, (
+        "T3 missing platform.machine() == \"arm64\" check"
+    )
+    assert 'platform.system() == "Darwin"' in section, (
+        "T3 missing platform.system() == \"Darwin\" check"
+    )

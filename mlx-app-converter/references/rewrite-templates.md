@@ -192,3 +192,26 @@ def run_inference(prompt: str, model, tokenizer) -> str:
 - Add `import mlx_lm` if not already added by T1.
 - If sampling parameters are used in the original code, add `from mlx_lm.sample_utils import make_logits_processors, make_sampler` (only the helpers actually needed).
 - Other `transformers` imports (e.g., `pipeline`, `AutoConfig` used elsewhere) are left alone.
+
+## Template T3: Apple Silicon runtime guard
+
+Insert a top-of-file runtime guard that fails fast with a clear error when the app runs on a non-Apple-Silicon host. Defends against deploys to x86 environments (e.g., Streamlit Cloud, generic Linux containers) where MLX cannot import.
+
+**Insertion point:** immediately after the module docstring (if present) or as the first executable statement in the file. Above all imports of `mlx_lm` or app-framework imports.
+
+**Code to insert:**
+
+```python
+import platform
+
+if not (platform.machine() == "arm64" and platform.system() == "Darwin"):
+    raise RuntimeError(
+        f"This app uses MLX and requires Apple Silicon (arm64 macOS). "
+        f"Detected: {platform.machine()}/{platform.system()}."
+    )
+```
+
+**Preservation rules:**
+- If the file already imports `platform` for another purpose, do not duplicate the import — reuse it and place the guard immediately after the existing `import platform` statement.
+- The check is inserted exactly once per file; the skill is idempotent across re-runs.
+- The literal string `platform.machine() == "arm64"` must appear in the inserted code (used by `tests/test_templates.py::test_t3_contains_apple_silicon_check`).
