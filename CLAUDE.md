@@ -136,7 +136,7 @@ See `gradio-app-builder/SKILL.md` for the full workflow.
 - Cache model/dataset loading: `@lru_cache(maxsize=1)` (dash, gradio) or `@st.cache_resource` (streamlit)
 - Test underlying Python functions only, not UI callbacks or wiring
 
-## App-Conversion Skills
+## App-Converter Skills
 
 Skills that transform an existing app file rather than scaffolding a new one. Distinguished by verb (`*-converter`) from the `*-builder` siblings.
 
@@ -175,6 +175,4 @@ pytest <test file> -v
 
 See `mlx-app-converter/SKILL.md` for the full workflow.
 
-### Future converters
-
-The "App-Conversion Skills" section gives a stable home for sibling converters that may follow the same shape (e.g., `vllm-app-converter`, `onnx-app-converter`).
+This section will host sibling converters as they're added.
