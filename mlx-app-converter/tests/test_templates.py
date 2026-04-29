@@ -179,6 +179,16 @@ def test_t3_contains_apple_silicon_check():
     )
 
 
+def test_t3_documents_arm64_test_side_effect():
+    """T3 must note that the runtime guard makes the rewritten test file
+    effectively arm64-only at import time (pytest collection raises
+    RuntimeError on x86 CI)."""
+    section = _template_section("T3")
+    assert "arm64-only" in section, (
+        "T3 missing 'arm64-only' note about test-collection side effect"
+    )
+
+
 def test_t4_mocks_mlx_lm_load():
     """T4 must show the mock target as mlx_lm.load (not from_pretrained)."""
     section = _template_section("T4")
@@ -256,6 +266,32 @@ def test_all_rejection_messages_present_in_skill_md():
     assert not missing, (
         "Rejection messages missing from SKILL.md:\n  - "
         + "\n  - ".join(missing)
+    )
+
+
+def test_skill_md_step3_documents_model_id_dedup():
+    """SKILL.md Step 3 must document that detected model IDs are deduplicated
+    by string value before matrix construction (so two from_pretrained calls
+    referencing the same MODEL_ID produce one matrix prompt, not two)."""
+    text = SKILL_MD.read_text()
+    assert "Deduplicate by model ID" in text, (
+        "SKILL.md missing model-ID deduplication note in Step 3"
+    )
+
+
+def test_skill_md_step5_t2_describes_sampler_routing():
+    """SKILL.md Step 5's T2 description must name the sampler-helper route
+    (regression guard against the original misleading 'temperature → temp'
+    direct-rename phrasing — sampling kwargs are not direct kwargs to
+    mlx_lm.generate)."""
+    text = SKILL_MD.read_text()
+    assert "make_sampler" in text, (
+        "SKILL.md missing 'make_sampler' — Step 5 T2 description must "
+        "name the helper route for sampling kwargs"
+    )
+    assert "make_logits_processors" in text, (
+        "SKILL.md missing 'make_logits_processors' — Step 5 T2 description "
+        "must name the helper route for repetition_penalty"
     )
 
 
