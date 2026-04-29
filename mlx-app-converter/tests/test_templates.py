@@ -270,21 +270,31 @@ def test_skip_validate_marker_count_is_zero():
     )
 
 
-OUTPUTS_FILES_RE = re.compile(r"^- `([^`]+)`", re.MULTILINE)
+_FILE_TOKEN_RE = re.compile(r"`([^`]+\.(?:py|toml|txt|example))`")
 
 
 def _files_in_outputs_section() -> set[str]:
-    """Extract file references from the SKILL.md '## Outputs (in-place edits)' section."""
+    """Extract file references from the SKILL.md '## Outputs (in-place edits)' section.
+
+    Captures all backtick-wrapped tokens on each bullet line that look like
+    filenames (have a recognised extension), so multi-token bullets like
+    '`requirements.txt` or `pyproject.toml`' are fully covered while
+    non-file inline-code tokens (package names, import paths) are excluded.
+    """
     text = SKILL_MD.read_text()
     section = re.search(
         r"^## Outputs \(in-place edits\).*?\n(.*?)(?=^## |\Z)",
         text, re.MULTILINE | re.DOTALL,
     )
     assert section, "SKILL.md missing '## Outputs (in-place edits)' section"
-    return set(OUTPUTS_FILES_RE.findall(section.group(1)))
+    files: set[str] = set()
+    for line in section.group(1).splitlines():
+        if line.startswith("- "):
+            files.update(_FILE_TOKEN_RE.findall(line))
+    return files
 
 
-def _files_in_pipeline_section() -> set[str]:
+def _files_in_workflow_section() -> set[str]:
     """Extract file references from the SKILL.md '## Workflow' section."""
     text = SKILL_MD.read_text()
     section = re.search(
@@ -302,7 +312,7 @@ def test_outputs_section_files_referenced_in_workflow():
     additional files (intermediate paths) that aren't outputs; that's OK.
     """
     outputs_files = _files_in_outputs_section()
-    workflow_files = _files_in_pipeline_section()
+    workflow_files = _files_in_workflow_section()
 
     # Normalize: outputs may use generic patterns ("test_*.py", "<app file>");
     # for parity, only check files that look like concrete paths.
