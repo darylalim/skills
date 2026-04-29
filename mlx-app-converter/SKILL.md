@@ -36,6 +36,7 @@ Converts an existing Streamlit or Gradio app from `transformers`-based inference
    - Resolve simple variable indirection: top-level `MODEL_ID = "..."` (or any module-level `<NAME> = "<literal>"` constant) used as the arg.
    - Dynamic args (env var, UI input, function call) → soft per-model rejection: `Skipping <call site>: model ID is dynamic (env var or runtime input). v1 supports only statically-known model IDs.`
    - If zero literal model IDs remain after resolution: `No HF model IDs found in <file>. mlx-app-converter requires statically-known model IDs (string literal or simple constant). Dynamic IDs (env var, UI input) are not supported in v1.`
+   - **Deduplicate by model ID string** before the next step. The canonical loader pattern uses two `from_pretrained` calls (one for the tokenizer, one for the model) referencing the same `MODEL_ID` — these collapse to one matrix prompt, not two.
 
 4. **Per-model variant resolution.** For each detected model, follow `references/variant-resolution.md`:
    - Query `huggingface_hub.list_models(author="mlx-community", search=<base_name>)`.
@@ -47,7 +48,7 @@ Converts an existing Streamlit or Gradio app from `transformers`-based inference
 
 5. **Rewrite.** Apply templates from `references/rewrite-templates.md`:
    - **T1 Loader** — replace transformers loader with `mlx_lm.load`. Preserve cache decorator and `MODEL_ID` constant name.
-   - **T2 Inference** — replace transformers inference with `mlx_lm.generate`. Apply kwarg rename map (`max_new_tokens` → `max_tokens`, `temperature` → `temp`, etc.).
+   - **T2 Inference** — replace transformers inference with `mlx_lm.generate`. Apply kwarg rewrites per T2's tables (`max_new_tokens` → `max_tokens` is a direct rename; sampling params `temperature`/`top_p`/`top_k`/`repetition_penalty` route through `make_sampler` / `make_logits_processors` helpers — they are NOT direct kwargs on `mlx_lm.generate`).
    - **T3 Apple Silicon runtime guard** — insert top-of-file check.
    - **T4 Test rewrite** — if a `test_*.py` exists alongside the app, swap mocks from `*.from_pretrained` to `mlx_lm.load`.
    - **T5 Dep manifest delta** — for `pyproject.toml` (Streamlit), print `uv add mlx-lm`. For `requirements.txt` (Gradio), append `mlx-lm`. Print the removal hint for `transformers` and `torch`.

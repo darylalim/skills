@@ -216,6 +216,8 @@ if not (platform.machine() == "arm64" and platform.system() == "Darwin"):
 - The check is inserted exactly once per file; the skill is idempotent across re-runs.
 - The literal string `platform.machine() == "arm64"` must appear in the inserted code (used by `tests/test_templates.py::test_t3_contains_apple_silicon_check`).
 
+**Side effect on tests:** because the guard runs at module import time, any `test_*.py` that imports the converted app (e.g., `from streamlit_app import run_inference` in T4) will also fail on non-arm64 hosts. This means the rewritten test file is effectively arm64-only — running `pytest` on x86 CI will raise `RuntimeError` at collection time. Document or skip accordingly if cross-platform CI is needed.
+
 ## Template T4: Test rewrite
 
 If a test file (`test_app.py`, `test_streamlit_app.py`, `test_gradio_app.py`, or any `test_*.py` next to the app file) exists, update its mocks from `transformers.*.from_pretrained` to `mlx_lm.load`. The test file is otherwise left in place — the skill modifies only the mock targets and the inference invocation.
