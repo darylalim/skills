@@ -39,13 +39,24 @@ Converts an existing Streamlit or Gradio app from `transformers`-based inference
    - **Deduplicate by model ID string** before the next step. The canonical loader pattern uses two `from_pretrained` calls (one for the tokenizer, one for the model) referencing the same `MODEL_ID` — these collapse to one matrix prompt, not two.
    - **If every detected model hits a soft rejection** (all dynamic args, or all skipped via gate 7's no-match fallback), exit with: `Nothing to convert — every detected model was skipped. The app file was not modified.`
 
-4. **Per-model variant resolution.** For each detected model, follow `references/variant-resolution.md`:
-   - Query `huggingface_hub.list_models(author="mlx-community", search=<base_name>)`.
-   - Filter to MLX quantization suffixes (`-bf16`, `-fp16`, `-8bit`, `-6bit`, `-4bit`).
-   - Parse `(parameter_count, quantization)` per match; build the matrix.
-   - Print the matrix with the highlighted default = `(original parameter count, max(bf16 > fp16 > 8bit > 6bit > 4bit))`.
-   - Ask the user to reply with a cell (e.g., `8B@bf16`) or `default`.
-   - **No-match fallback:** print up to 3 closest siblings via edit distance plus a "skip this model unchanged" option, with: `No MLX variants found for <model>. Closest siblings: <up to 3>. Pick one or reply "skip" to leave this model unchanged.`
+4. **Per-model variant resolution.** For each detected model, invoke the helper from the skill root (`mlx-app-converter/`):
+
+   ```bash
+   python -m lib.variant_resolution query \
+       --base-name "<base_name>" \
+       --orig-param-count "<original_param_count>" \
+       --model-id "<full_model_id>"
+   ```
+
+   The helper queries `mlx-community` on HuggingFace Hub, builds a (param-count × quantization) matrix, marks the default cell (original parameter count + highest precision per `bf16 > fp16 > 8bit > 6bit > 4bit`), and prints it. Present the matrix output to the user and ask them to reply with a cell address (e.g., `8B@bf16`) or `default` to accept the highlighted default.
+
+   Use `parse_reply` from `lib/variant_resolution.py` to validate the user's response. Re-prompt on invalid input (missing `@`, unrecognized cell); exit after three consecutive invalid replies with: `Too many invalid replies for <model>. Skipping this model.`
+
+   - **No-match fallback:** if `query` returns zero variants, run:
+     ```bash
+     python -m lib.variant_resolution siblings --base-name "<base_name>"
+     ```
+     Print up to 3 closest siblings plus a "skip this model unchanged" option, with: `No MLX variants found for <model>. Closest siblings: <up to 3>. Pick one or reply "skip" to leave this model unchanged.`
 
 5. **Rewrite.** Apply templates from `references/rewrite-templates.md`:
    - **T1 Loader** — replace transformers loader with `mlx_lm.load`. Preserve cache decorator and `MODEL_ID` constant name.
