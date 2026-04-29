@@ -40,3 +40,11 @@ def test_t1_preserves_cache_decorators():
     section = _template_section("T1")
     assert "@st.cache_resource" in section, "T1 missing @st.cache_resource"
     assert "@lru_cache(maxsize=1)" in section, "T1 missing @lru_cache(maxsize=1)"
+
+
+def test_t2_maps_max_new_tokens_to_max_tokens():
+    """T2 must document the max_new_tokens → max_tokens kwarg rename."""
+    section = _template_section("T2")
+    assert "max_new_tokens" in section, "T2 missing reference to max_new_tokens"
+    assert "max_tokens" in section, "T2 missing reference to max_tokens"
+    # both must appear so the rename is documented
