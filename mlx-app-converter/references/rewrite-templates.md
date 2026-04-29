@@ -269,3 +269,48 @@ def test_run_inference_returns_string(mock_load):
 - The `mock_load.return_value` is set to a `(mock_model, mock_tokenizer)` tuple so callers of `load_model()` see the same shape as before.
 - `mlx_lm.generate` is mocked separately when the test exercises the inference path; the return value is a string (matching mlx_lm's actual API).
 - If the test file imports `from transformers import ...` directly (uncommon in tests), strip those imports.
+
+## Template T5: Dep manifest delta
+
+Update the project's dependency file to add `mlx-lm`. The skill detects the project type from which file exists in the working directory:
+
+- `pyproject.toml` present → uv-managed (Streamlit convention).
+- `requirements.txt` present → pip-installed (Gradio / Hugging Face Spaces convention).
+
+If both files exist, the skill prefers `pyproject.toml` (uv) and prints a one-line warning that `requirements.txt` was not modified.
+
+**Streamlit (uv-managed):**
+
+The skill prints (does not auto-execute) the following command for the user to run:
+
+```
+uv add mlx-lm
+```
+
+The skill does not directly edit `pyproject.toml` — it lets `uv add` handle the toml manipulation, including version pinning and lockfile update.
+
+**Gradio (`requirements.txt`):**
+
+The skill appends a single line to `requirements.txt`:
+
+```
+mlx-lm
+```
+
+If `requirements.txt` already contains a pinned `mlx-lm` line, no change is made. The skill does not pin a version unless the user has pinned other deps in the same file (in which case it pins to the latest stable, queried via the HF Hub API alongside the variant resolution step).
+
+**Removal hint (printed to user, both project types):**
+
+```
+Note: transformers and torch may now be unused in this app. If no other code
+in your project imports them, you can remove them with:
+  uv remove transformers torch        # Streamlit (uv)
+  # or delete their lines from requirements.txt   # Gradio
+The skill does not auto-remove these dependencies because they may be used by
+other modules outside the converted file.
+```
+
+**Preservation rules:**
+- The skill never auto-removes `transformers` or `torch` from dep files.
+- Other dependencies are not modified.
+- The version pin policy is: pin `mlx-lm` only if the surrounding file uses pins; otherwise leave unpinned.

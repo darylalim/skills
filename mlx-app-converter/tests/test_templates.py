@@ -83,3 +83,24 @@ def test_t4_mocks_mlx_lm_load():
     """T4 must show the mock target as mlx_lm.load (not from_pretrained)."""
     section = _template_section("T4")
     assert "mlx_lm.load" in section, "T4 missing mlx_lm.load as mock target"
+
+
+def test_t5_emits_uv_add_for_streamlit():
+    """T5 must instruct `uv add mlx-lm` for Streamlit (uv-managed)."""
+    section = _template_section("T5")
+    assert "uv add mlx-lm" in section, "T5 missing 'uv add mlx-lm' command for Streamlit"
+
+
+def test_t5_appends_to_requirements_for_gradio():
+    """T5 must instruct appending mlx-lm to requirements.txt for Gradio."""
+    section = _template_section("T5")
+    assert "requirements.txt" in section, "T5 missing requirements.txt reference"
+    assert "mlx-lm" in section, "T5 missing mlx-lm reference"
+
+
+def test_t5_prints_removal_hint():
+    """T5 must include the transformers/torch removal hint string."""
+    section = _template_section("T5")
+    assert "transformers and torch may now be unused" in section, (
+        "T5 missing the standard removal-hint phrase"
+    )
