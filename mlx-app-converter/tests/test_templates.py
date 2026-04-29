@@ -224,10 +224,37 @@ def test_t5_appends_to_requirements_for_gradio():
 
 
 def test_t5_prints_removal_hint():
-    """T5 must include the transformers/torch removal hint string."""
+    """T5 must include the transformers/torch removal hint phrase."""
     section = _template_section("T5")
-    assert "transformers and torch may now be unused" in section, (
+    assert "transformers and torch are no longer needed for inference" in section, (
         "T5 missing the standard removal-hint phrase"
+    )
+
+
+def test_t5_uses_framework_driven_dep_detection():
+    """T5 must pick the dep manifest by framework (not by file presence) so
+    that Streamlit-on-Spaces (which has both pyproject.toml and requirements.txt)
+    routes correctly."""
+    section = _template_section("T5")
+    assert "Framework = Streamlit" in section, (
+        "T5 missing 'Framework = Streamlit' branch — should pick by framework"
+    )
+    assert "Framework = Gradio" in section, (
+        "T5 missing 'Framework = Gradio' branch — should pick by framework"
+    )
+
+
+def test_t5_warns_about_multi_file_imports():
+    """T5 removal hint must hedge: other files in the project may still import
+    transformers/torch (e.g., tokenizer-only uses), so the user must audit
+    before removing the deps."""
+    section = _template_section("T5")
+    assert "other files in your project may still import them" in section, (
+        "T5 removal hint missing the multi-file caveat"
+    )
+    # Line-broken in the rendered hint, so check fragments separately.
+    assert "do NOT run a removal" in section, (
+        "T5 removal hint missing the explicit don't-run-removal warning"
     )
 
 

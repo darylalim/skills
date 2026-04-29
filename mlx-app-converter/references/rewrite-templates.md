@@ -274,14 +274,14 @@ def test_run_inference_returns_string(mock_load):
 
 ## Template T5: Dep manifest delta
 
-Update the project's dependency file to add `mlx-lm`. The skill detects the project type from which file exists in the working directory:
+Update the project's dependency file to add `mlx-lm`. The skill picks the manifest **by framework, not by file presence**, because Streamlit apps deployed to Hugging Face Spaces use `requirements.txt` even when `pyproject.toml` is also present in the repo:
 
-- `pyproject.toml` present → uv-managed (Streamlit convention).
-- `requirements.txt` present → pip-installed (Gradio / Hugging Face Spaces convention).
+- **Framework = Streamlit** → use `pyproject.toml` if present (uv-managed); otherwise fall back to `requirements.txt`.
+- **Framework = Gradio** → use `requirements.txt` (Spaces convention).
 
-If both files exist, the skill prefers `pyproject.toml` (uv) and prints a one-line warning that `requirements.txt` was not modified.
+The framework was already detected in the pre-flight gates (Step 2's framework gate), so re-use that signal rather than re-deriving from file existence. If the framework-selected manifest does not exist, exit with: `Expected <manifest> for <framework> framework; not found. Cannot add mlx-lm dependency.`
 
-**Streamlit (uv-managed):**
+**Streamlit (uv-managed `pyproject.toml`):**
 
 The skill prints (does not auto-execute) the following command for the user to run:
 
@@ -291,7 +291,7 @@ uv add mlx-lm
 
 The skill does not directly edit `pyproject.toml` — it lets `uv add` handle the toml manipulation, including version pinning and lockfile update.
 
-**Gradio (`requirements.txt`):**
+**Gradio (or Streamlit fallback) — `requirements.txt`:**
 
 The skill appends a single line to `requirements.txt`:
 
@@ -299,20 +299,28 @@ The skill appends a single line to `requirements.txt`:
 mlx-lm
 ```
 
-If `requirements.txt` already contains a pinned `mlx-lm` line, no change is made. The skill does not pin a version unless the user has pinned other deps in the same file (in which case it pins to the latest stable, queried via the HF Hub API alongside the variant resolution step).
+If `requirements.txt` already contains an `mlx-lm` line (pinned or unpinned), no change is made. The skill does not pin a version unless the user has pinned other deps in the same file (in which case it pins to the latest stable, queried via the HF Hub API alongside the variant resolution step).
 
 **Removal hint (printed to user, both project types):**
 
 ```
-Note: transformers and torch may now be unused in this app. If no other code
-in your project imports them, you can remove them with:
-  uv remove transformers torch        # Streamlit (uv)
-  # or delete their lines from requirements.txt   # Gradio
-The skill does not auto-remove these dependencies because they may be used by
-other modules outside the converted file.
+Note: transformers and torch are no longer needed for inference in <converted file>.
+However, other files in your project may still import them — do NOT run a removal
+command without checking first. To audit:
+
+  grep -rn "import transformers\|from transformers\|import torch\|from torch" .
+
+If grep returns no matches outside <converted file>, you can remove the deps:
+  Streamlit (uv):   uv remove transformers torch
+  Gradio (requirements.txt): delete the transformers and torch lines
+
+The skill never auto-removes these dependencies because multi-file projects
+commonly use transformers for tokenizer-only tasks (token counting, prompt
+formatting) that mlx-lm does not replace.
 ```
 
 **Preservation rules:**
 - The skill never auto-removes `transformers` or `torch` from dep files.
 - Other dependencies are not modified.
 - The version pin policy is: pin `mlx-lm` only if the surrounding file uses pins; otherwise leave unpinned.
+- The idempotency rule for `requirements.txt` covers both pinned and unpinned existing `mlx-lm` lines.
