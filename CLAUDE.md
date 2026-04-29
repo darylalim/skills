@@ -135,3 +135,46 @@ See `gradio-app-builder/SKILL.md` for the full workflow.
 - Load config from `.env` via `python-dotenv`; always generate `.env.example`
 - Cache model/dataset loading: `@lru_cache(maxsize=1)` (dash, gradio) or `@st.cache_resource` (streamlit)
 - Test underlying Python functions only, not UI callbacks or wiring
+
+## App-Conversion Skills
+
+Skills that transform an existing app file rather than scaffolding a new one. Distinguished by verb (`*-converter`) from the `*-builder` siblings.
+
+### `mlx-app-converter` (existing Streamlit/Gradio app → MLX-based inference)
+
+**Workflow:** Auto-discover app file in CWD → pre-flight gates (Apple Silicon, framework, git-clean) → AST-detect HF model IDs → per-model variant resolution (HF query, matrix, user pick) → rewrite (loader + inference + Apple Silicon guard + test mocks + dep manifest) → verify with ruff + ty + pytest.
+
+**Inputs:** existing Streamlit or Gradio app file in the current working directory (`app.py`, `streamlit_app.py`, or `gradio_app.py`). Other inputs (notebooks, scripts, URLs, model cards) are rejected. v1 scope: LLMs only (text-generation models loaded via `AutoModelForCausalLM`).
+
+**Outputs (in-place edits):**
+- `<app file>` — loader + inference rewritten for `mlx-lm`; runtime Apple Silicon guard inserted; imports updated
+- `test_*.py` (if present) — mocks swapped from `*.from_pretrained` to `mlx_lm.load`; inference invocation updated
+- `requirements.txt` (Gradio) or `pyproject.toml` (Streamlit) — `mlx-lm` added; `transformers`/`torch` left in place with a removal hint printed
+
+**Toolchain:**
+```bash
+# Streamlit (uv-managed)
+uv add mlx-lm
+uv run ruff check --fix <app file> [test file]
+uv run ruff format <app file> [test file]
+uv run ty check <app file>
+uv run pytest <test file> -v
+
+# Gradio (pip + requirements.txt)
+pip install -r requirements.txt
+ruff check --fix <app file> [test file]
+ruff format <app file> [test file]
+ty check <app file>
+pytest <test file> -v
+```
+
+**Repository structure:**
+- `mlx-app-converter/references/rewrite-templates.md` — T1 (Loader), T2 (Inference), T3 (Apple Silicon guard), T4 (Test rewrite), T5 (Dep manifest delta).
+- `mlx-app-converter/references/variant-resolution.md` — HF query strategy, parameter-count regex, matrix layout, default-pick precedence (`bf16 > fp16 > 8bit > 6bit > 4bit`), sibling search.
+- `mlx-app-converter/tests/` — single `test_templates.py` covering static validation (`ast.parse` + `ruff E,F,I` over embedded python blocks) and structural consistency / spec-alignment checks. Has its own `pyproject.toml` and `.venv`. Run `uv run pytest` from that directory before committing changes to skill templates.
+
+See `mlx-app-converter/SKILL.md` for the full workflow.
+
+### Future converters
+
+The "App-Conversion Skills" section gives a stable home for sibling converters that may follow the same shape (e.g., `vllm-app-converter`, `onnx-app-converter`).
