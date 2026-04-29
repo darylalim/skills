@@ -120,6 +120,21 @@ def test_variant_default_precedence_documented():
     )
 
 
+def test_variant_resolution_documents_reply_validation():
+    """variant-resolution.md must have a 'Reply validation' section covering
+    malformed replies (missing @, unrecognized cell, typos)."""
+    text = VARIANT_RESOLUTION_MD.read_text()
+    assert "## Reply validation" in text, (
+        "variant-resolution.md missing '## Reply validation' section"
+    )
+    assert "Missing `@`" in text, (
+        "Reply validation must cover the missing-@ case"
+    )
+    assert "Unrecognized cell" in text, (
+        "Reply validation must cover the unrecognized-cell case"
+    )
+
+
 REWRITE_TEMPLATES_MD = SKILL_ROOT / "references" / "rewrite-templates.md"
 
 
@@ -292,6 +307,17 @@ def test_skill_md_step5_t2_describes_sampler_routing():
     assert "make_logits_processors" in text, (
         "SKILL.md missing 'make_logits_processors' — Step 5 T2 description "
         "must name the helper route for repetition_penalty"
+    )
+
+
+def test_skill_md_step3_documents_all_soft_rejections_exit():
+    """SKILL.md Step 3 must document the exit behavior when every detected
+    model hits a soft rejection (all dynamic args, or all skipped via no-match
+    fallback) — otherwise the skill flow is undefined for that case."""
+    text = SKILL_MD.read_text()
+    assert "Nothing to convert" in text, (
+        "SKILL.md missing the 'Nothing to convert' exit message for "
+        "all-soft-rejections case"
     )
 
 

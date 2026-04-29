@@ -37,6 +37,7 @@ Converts an existing Streamlit or Gradio app from `transformers`-based inference
    - Dynamic args (env var, UI input, function call) → soft per-model rejection: `Skipping <call site>: model ID is dynamic (env var or runtime input). v1 supports only statically-known model IDs.`
    - If zero literal model IDs remain after resolution: `No HF model IDs found in <file>. mlx-app-converter requires statically-known model IDs (string literal or simple constant). Dynamic IDs (env var, UI input) are not supported in v1.`
    - **Deduplicate by model ID string** before the next step. The canonical loader pattern uses two `from_pretrained` calls (one for the tokenizer, one for the model) referencing the same `MODEL_ID` — these collapse to one matrix prompt, not two.
+   - **If every detected model hits a soft rejection** (all dynamic args, or all skipped via gate 7's no-match fallback), exit with: `Nothing to convert — every detected model was skipped. The app file was not modified.`
 
 4. **Per-model variant resolution.** For each detected model, follow `references/variant-resolution.md`:
    - Query `huggingface_hub.list_models(author="mlx-community", search=<base_name>)`.

@@ -65,3 +65,19 @@ The skill presents these as "closest siblings" and asks the user whether to pick
 ## Multi-model apps
 
 Each detected model is resolved independently: one matrix per model, presented in source-order (line number ascending). The user may answer all matrices in a single reply or one at a time.
+
+## Reply validation
+
+A user reply to a matrix prompt is valid if it is one of:
+
+- The literal string `default` (case-sensitive) — accepts the highlighted default cell.
+- A cell address of the form `<size>@<quantization>` where `<size>` matches one of the row labels (e.g., `1B`, `3B`, `8B`, `0.5B`) and `<quantization>` matches one of the column labels (e.g., `bf16`, `4bit`).
+- The literal string `skip` (case-sensitive, only when the no-match fallback is in play) — leaves this model unchanged in the rewritten code.
+
+Any other reply is rejected with a re-prompt:
+
+- **Missing `@`** (e.g., user replies `8B`): `Reply must include the quantization (e.g., 8B@bf16) or be the literal "default". Try again.`
+- **Unrecognized cell** (e.g., user replies `8B@5bit` when 5bit is not in the matrix): `8B@5bit is not in the matrix. Available cells: <comma-separated list of populated cells>. Try again.`
+- **Typos / unknown words** (e.g., user replies `defualt`): same as the unrecognized-cell branch — list the valid options and re-prompt.
+
+The skill never proceeds with a malformed reply; it loops until the user provides a valid cell, `default`, or `skip`. After three consecutive invalid replies, the skill exits with: `Too many invalid replies for <model>. Skipping this model.` This bounds the prompt loop in case of accidental copy-paste loops or terminal corruption.
