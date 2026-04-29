@@ -171,7 +171,7 @@ pytest <test file> -v
 **Repository structure:**
 - `mlx-app-converter/references/rewrite-templates.md` — T1 (Loader), T2 (Inference), T3 (Apple Silicon guard), T4 (Test rewrite), T5 (Dep manifest delta).
 - `mlx-app-converter/references/variant-resolution.md` — HF query strategy, parameter-count regex, matrix layout, default-pick precedence (`bf16 > fp16 > 8bit > 6bit > 4bit`), sibling search.
-- `mlx-app-converter/tests/` — single `test_templates.py` covering static validation (`ast.parse` + `ruff E,F,I` over embedded python blocks) and structural consistency / spec-alignment checks. Has its own `pyproject.toml` and `.venv`. Run `uv run pytest` from that directory before committing changes to skill templates.
+- `mlx-app-converter/tests/` — single `test_templates.py` with a static validator (`ast.parse` + `ruff check --select E,F,I`) for embedded Python blocks, plus structural-consistency tests (template-name references, rejection-message presence, skip-validate marker count, outputs ↔ workflow file parity, SKILL.md model-ID dedup note, SKILL.md Step 5 sampler-routing phrasing) and MLX-specific spec-alignment checks (variant default precedence, T1 cache decorators, T2 max_tokens rename + sampler-helper construction, T3 platform guard + arm64-only test side effect, T4 `mlx_lm.load` mock target, T5 `uv add` + `requirements.txt` append + removal hint). Has its own `pyproject.toml` and `.venv`. Run `uv run pytest` from that directory before committing changes to skill templates.
 
 See `mlx-app-converter/SKILL.md` for the full workflow.
 
