@@ -11,9 +11,8 @@ Replace the `transformers`-based model-loading function with an `mlx_lm.load`-ba
 **Streamlit form (before):**
 
 ```python
-from transformers import AutoModelForCausalLM, AutoTokenizer
-
 import streamlit as st
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 MODEL_ID = "meta-llama/Llama-3.1-8B-Instruct"
 
