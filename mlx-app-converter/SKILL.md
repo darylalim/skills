@@ -19,19 +19,19 @@ Converts an existing Streamlit or Gradio app from `transformers`-based inference
 
 ## Workflow
 
-1. **Identify the input.** Auto-discover the app file in the current working directory:
-   - Look for `app.py`, `streamlit_app.py`, or `gradio_app.py`.
+1. **Identify the input.** This skill operates on an existing Streamlit or Gradio app file in the current working directory.
+   - If the user references something this skill doesn't handle (a notebook, a model card URL, a script that isn't a Streamlit/Gradio app), reject with: `mlx-app-converter operates on an existing Streamlit or Gradio app file in the current working directory. For other inputs, use the appropriate skill (streamlit-app-builder, gradio-app-builder) or a general-purpose prompt.`
+   - Otherwise, auto-discover the app file in CWD by looking for `app.py`, `streamlit_app.py`, or `gradio_app.py`.
    - **0 matches:** reject with: `No app file found. Expected one of app.py, streamlit_app.py, gradio_app.py in the current directory.`
    - **2+ matches:** ask: `Found multiple app files: <list>. Tell me which one to convert.`
    - **1 match:** proceed.
-   - If the user references something this skill doesn't handle (a notebook, a model card URL, a script that isn't a Streamlit/Gradio app), reject with: `mlx-app-converter operates on an existing Streamlit or Gradio app file in the current working directory. For other inputs, use the appropriate skill (streamlit-app-builder, gradio-app-builder) or a general-purpose prompt.`
 
 2. **Pre-flight gates.** All hard — failure exits without modifying anything.
    - **Hardware:** verify `platform.machine() == "arm64"` and `platform.system() == "Darwin"`. On failure: `MLX requires Apple Silicon (arm64 macOS). Detected: <machine>/<system>. Run this skill on an Apple Silicon Mac.`
    - **Framework:** parse the app file's top-level imports. Reject if neither `streamlit` nor `gradio` is imported: `<file> does not import streamlit or gradio at the top level. mlx-app-converter only supports Streamlit and Gradio apps.`
    - **Git-clean:** for each file the skill plans to modify (the app file, any test file alongside it, the dep manifest), check `git status --porcelain <file>`. If any has uncommitted changes: `Uncommitted changes in <file>. Commit or stash before running mlx-app-converter so the rewrite is reviewable via git diff.`
 
-3. **Detect HF model IDs.** AST-scan the app file:
+3. **Detect HF model IDs.** AST-scan the app file. Gate 6 below (no models found) is hard — exits the skill. Gate 8 (dynamic-arg per call site) is soft — skips that one model and proceeds with the rest.
    - Extract literal string args from any `<X>.from_pretrained("...")` call (`AutoTokenizer`, `AutoModelForCausalLM`, etc.).
    - Resolve simple variable indirection: top-level `MODEL_ID = "..."` (or any module-level `<NAME> = "<literal>"` constant) used as the arg.
    - Dynamic args (env var, UI input, function call) → soft per-model rejection: `Skipping <call site>: model ID is dynamic (env var or runtime input). v1 supports only statically-known model IDs.`
@@ -70,7 +70,6 @@ Other inputs (notebooks, scripts, GitHub URLs, HF model card URLs) are rejected.
 - `<app file>` — loader + inference function rewritten for `mlx-lm`; imports updated; runtime Apple Silicon guard inserted at top of file.
 - `test_*.py` (only if a test file already exists alongside the app) — mocks updated from `transformers.*.from_pretrained` to `mlx_lm.load`; inference test invocation updated.
 - `requirements.txt` (Gradio) or `pyproject.toml` (Streamlit) — `mlx-lm` added. `transformers` and `torch` are left in place; the skill prints a removal hint instead of auto-removing.
-- `.env.example` — left as-is. v1 introduces no new env vars.
 
 ## Toolchain
 
