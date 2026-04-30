@@ -2,8 +2,9 @@
 
 The static tests in `mlx-app-converter/tests/` verify documentation invariants
 but do not exercise the actual rewrite end-to-end. This directory contains
-two small fixture apps and expected-output checklists so a human can confirm
-that the skill produces correct results against a known input.
+five fixture apps spanning v1 LLM and v2 VLM / multi-modal scope, each with an
+expected-output checklist so a human can confirm that the skill produces
+correct results against a known input.
 
 **These are NOT auto-run by pytest.** Run them manually when changing the
 templates or rewrite logic.
@@ -48,16 +49,24 @@ manual-tests/
 
 ### Step 1 — Pick a fixture
 
-Choose either `streamlit-llm-fixture` (Streamlit + `pyproject.toml`) or
-`gradio-llm-fixture` (Gradio + `requirements.txt`). Run both to get full
-coverage across the two framework paths.
+Pick whichever surface you want to exercise:
+
+- `streamlit-llm-fixture` / `gradio-llm-fixture` (v1) — LLM-only conversion;
+  single variant matrix for `meta-llama/Llama-3.1-8B-Instruct`.
+- `streamlit-vlm-fixture` / `gradio-vlm-fixture` (v2) — VLM-only conversion;
+  single variant matrix for `Qwen/Qwen2-VL-7B-Instruct`; exercises the
+  `.text` extraction from `mlx_vlm.generate`'s `GenerationResult`.
+- `streamlit-multimodal-fixture` (v2) — LLM + VLM in one file; presents
+  **two** variant matrices, unions imports (`import mlx_lm` + `import
+  mlx_vlm`), prints a single combined `uv add mlx-lm mlx-vlm`.
+
+Run all five to get full coverage; pick one or two to spot-check after a
+template edit.
 
 ### Step 2 — Copy to a scratch location
 
 ```bash
-cp -r mlx-app-converter/manual-tests/streamlit-llm-fixture/ /tmp/scratch-streamlit/
-# or
-cp -r mlx-app-converter/manual-tests/gradio-llm-fixture/ /tmp/scratch-gradio/
+cp -r mlx-app-converter/manual-tests/<fixture-name>/ /tmp/scratch-<fixture-name>/
 ```
 
 ### Step 3 — Initialise a clean git tree
@@ -87,12 +96,15 @@ use mlx-lm so it runs on my Apple Silicon Mac.
 ```
 
 The skill will:
-1. Detect the framework and the `run_inference` function.
-2. Present a variant-selection matrix for the model
-   (`meta-llama/Llama-3.1-8B-Instruct`).
-3. Rewrite `streamlit_app.py` (or `app.py`) and the test file.
-4. Print the dep-update command (`uv add mlx-lm` for Streamlit; append line
-   for Gradio).
+1. Detect the framework and the inference function(s).
+2. Present a variant-selection matrix **per detected model** — one for
+   LLM-only or VLM-only fixtures, two for the multi-modal fixture.
+3. Rewrite the app file and the test file.
+4. Print the dep-update command, varying by fixture:
+   - LLM-only Streamlit: `uv add mlx-lm`.
+   - VLM-only Streamlit: `uv add mlx-vlm`.
+   - Multi-modal Streamlit: single combined `uv add mlx-lm mlx-vlm`.
+   - Gradio: append the matching line(s) to `requirements.txt`.
 
 ### Step 5 — Walk through the EXPECTED.md checklist
 
