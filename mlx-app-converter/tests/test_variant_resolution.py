@@ -444,3 +444,98 @@ class TestQuantizationPrecedence:
 
     def test_4bit_is_lowest(self):
         assert vr.QUANTIZATION_PRECEDENCE[-1] == "4bit"
+
+
+# ---------------------------------------------------------------------------
+# v2 VLM coverage tests
+# ---------------------------------------------------------------------------
+
+
+def test_query_handles_qwen2_vl_dense_matrix():
+    """Qwen2-VL family on mlx-community has multiple param counts × multiple
+    quantizations — confirm query_mlx_variants parses all of them and
+    pick_default returns the orig-param-count + bf16 cell."""
+    def fake_list_models(*, author: str, search: str):  # noqa: ANN202
+        assert author == "mlx-community"
+        return [
+            FakeModel("mlx-community/Qwen2-VL-2B-Instruct-bf16"),
+            FakeModel("mlx-community/Qwen2-VL-2B-Instruct-4bit"),
+            FakeModel("mlx-community/Qwen2-VL-7B-Instruct-bf16"),
+            FakeModel("mlx-community/Qwen2-VL-7B-Instruct-4bit"),
+            FakeModel("mlx-community/Qwen2-VL-7B-Instruct-8bit"),
+        ]
+
+    variants = vr.query_mlx_variants(
+        "Qwen2-VL-7B-Instruct", list_models=fake_list_models
+    )
+    assert len(variants) == 5, f"Expected 5 variants, got {len(variants)}"
+    assert all(isinstance(v, vr.Variant) for v in variants)
+
+    default = vr.pick_default(variants, "7B")
+    assert default is not None
+    assert default.param_count == "7B"
+    assert default.quantization == "bf16"
+
+
+def test_query_handles_llava_sparse_by_rows():
+    """Llava family on mlx-community has only the 7B size on the user's
+    original — confirm sparse-by-rows matrices work."""
+    def fake_list_models(*, author: str, search: str):  # noqa: ANN202
+        return [
+            FakeModel("mlx-community/llava-v1.6-mistral-7B-4bit"),
+            FakeModel("mlx-community/llava-v1.6-mistral-7B-8bit"),
+            FakeModel("mlx-community/llava-v1.6-mistral-7B-bf16"),
+        ]
+
+    variants = vr.query_mlx_variants(
+        "llava-v1.6-mistral-7B", list_models=fake_list_models
+    )
+    assert len(variants) == 3
+    default = vr.pick_default(variants, "7B")
+    assert default is not None
+    assert default.param_count == "7B"
+    assert default.quantization == "bf16"
+
+
+def test_query_handles_paligemma_sparse_by_cols():
+    """PaliGemma on mlx-community may have multiple param counts but only one
+    quantization — confirm sparse-by-cols matrices work."""
+    def fake_list_models(*, author: str, search: str):  # noqa: ANN202
+        return [
+            FakeModel("mlx-community/paligemma-3B-mix-224-4bit"),
+            FakeModel("mlx-community/paligemma-3B-mix-448-4bit"),
+            FakeModel("mlx-community/paligemma-10B-mix-224-4bit"),
+        ]
+
+    variants = vr.query_mlx_variants(
+        "paligemma-3B-mix", list_models=fake_list_models
+    )
+    assert len(variants) == 3
+    default = vr.pick_default(variants, "3B")
+    assert default is not None
+    assert default.param_count == "3B"
+    assert default.quantization == "4bit"
+
+
+def test_render_matrix_renders_vlm_dense():
+    """Render-matrix output for VLMs visually mirrors the LLM matrix —
+    same row/col layout, same default-pick marker."""
+    def fake_list_models(*, author: str, search: str):  # noqa: ANN202
+        return [
+            FakeModel("mlx-community/Qwen2-VL-2B-Instruct-bf16"),
+            FakeModel("mlx-community/Qwen2-VL-2B-Instruct-4bit"),
+            FakeModel("mlx-community/Qwen2-VL-7B-Instruct-bf16"),
+            FakeModel("mlx-community/Qwen2-VL-7B-Instruct-4bit"),
+        ]
+
+    variants = vr.query_mlx_variants(
+        "Qwen2-VL-7B-Instruct", list_models=fake_list_models
+    )
+    default = vr.pick_default(variants, "7B")
+    output = vr.render_matrix(
+        variants, "7B", default, model_id="Qwen/Qwen2-VL-7B-Instruct"
+    )
+    assert "★" in output
+    assert "* 7B (orig)" in output or "*7B (orig)" in output
+    assert "bf16" in output
+    assert "4bit" in output
