@@ -25,7 +25,10 @@ from typing import Callable, Iterable
 QUANTIZATION_PRECEDENCE: tuple[str, ...] = ("bf16", "fp16", "8bit", "6bit", "4bit")
 
 # Regex to extract parameter count like "8B", "0.5B", "70B" from a model name.
-_PARAM_COUNT_RE = re.compile(r"\b(\d+(?:\.\d+)?)B\b")
+# Case-insensitive: mlx-community has historically published variants with
+# mixed casing (e.g., `paligemma-3b-mix-224` vs `Qwen2-VL-7B-Instruct`).
+# parse_param_count normalizes the output to uppercase regardless of input.
+_PARAM_COUNT_RE = re.compile(r"\b(\d+(?:\.\d+)?)B\b", re.IGNORECASE)
 
 # Suffix patterns that mark a standard mlx-lm quantized variant.
 _QUANT_SUFFIXES = tuple(f"-{q}" for q in QUANTIZATION_PRECEDENCE)

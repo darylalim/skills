@@ -75,6 +75,14 @@ class TestParseParamCount:
     def test_full_model_id_with_prefix(self):
         assert vr.parse_param_count("mlx-community/Llama-3.1-8B-Instruct-bf16") == "8B"
 
+    def test_lowercase_b_normalizes_to_uppercase(self):
+        """mlx-community variants occasionally use lowercase 'b' (e.g.,
+        `paligemma-3b-mix-224`); parse_param_count must accept both cases
+        and normalize the output to canonical uppercase."""
+        assert vr.parse_param_count("paligemma-3b-mix-224") == "3B"
+        assert vr.parse_param_count("foo-7b-bar") == "7B"
+        assert vr.parse_param_count("model-0.5b-suffix") == "0.5B"
+
 
 # ---------------------------------------------------------------------------
 # parse_quantization
