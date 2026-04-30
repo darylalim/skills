@@ -2,9 +2,9 @@
 
 The static tests in `mlx-app-converter/tests/` verify documentation invariants
 but do not exercise the actual rewrite end-to-end. This directory contains
-five fixture apps spanning v1 LLM and v2 VLM / multi-modal scope, each with an
-expected-output checklist so a human can confirm that the skill produces
-correct results against a known input.
+six fixture apps spanning v1 LLM, v2 VLM / multi-modal scope, and rejection
+paths, each with an expected-output checklist so a human can confirm that the
+skill produces correct results against a known input.
 
 **These are NOT auto-run by pytest.** Run them manually when changing the
 templates or rewrite logic.
@@ -36,7 +36,12 @@ manual-tests/
 │   ├── requirements.txt
 │   ├── test_app.py
 │   └── EXPECTED.md
-└── streamlit-multimodal-fixture/          # v2 — LLM + VLM multi-modal Streamlit
+├── streamlit-multimodal-fixture/          # v2 — LLM + VLM multi-modal Streamlit
+│   ├── streamlit_app.py
+│   ├── pyproject.toml
+│   ├── test_streamlit_app.py
+│   └── EXPECTED.md
+└── streamlit-streaming-fixture/           # v2 — exercises streaming soft-reject gate
     ├── streamlit_app.py
     ├── pyproject.toml
     ├── test_streamlit_app.py
@@ -59,8 +64,11 @@ Pick whichever surface you want to exercise:
 - `streamlit-multimodal-fixture` (v2) — LLM + VLM in one file; presents
   **two** variant matrices, unions imports (`import mlx_lm` + `import
   mlx_vlm`), prints a single combined `uv add mlx-lm mlx-vlm`.
+- `streamlit-streaming-fixture` (v2) — exercises the streaming soft-reject gate;
+  conversion should be REJECTED, source unmodified. Documents the rejection-path
+  UX rather than rewrite correctness.
 
-Run all five to get full coverage; pick one or two to spot-check after a
+Run all six to get full coverage; pick one or two to spot-check after a
 template edit.
 
 ### Step 2 — Copy to a scratch location
