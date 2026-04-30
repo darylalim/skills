@@ -217,6 +217,63 @@ def test_t2_documents_sampler_helper_construction():
     )
 
 
+def test_t2_has_vlm_subsection():
+    """T2 must contain a VLM subsection covering mlx_vlm.generate."""
+    section = _template_section("T2")
+    assert "### VLM" in section, "T2 missing '### VLM' subsection"
+
+
+def test_t2_vlm_uses_mlx_vlm_generate():
+    """T2 VLM form must show the mlx_vlm.generate call shape with image arg."""
+    section = _template_section("T2")
+    vlm_split = section.split("### VLM", 1)
+    assert len(vlm_split) == 2, "T2 missing '### VLM' subsection"
+    vlm_section = vlm_split[1]
+    assert "mlx_vlm.generate(" in vlm_section, (
+        "T2 VLM form missing mlx_vlm.generate call"
+    )
+    assert "image" in vlm_section, (
+        "T2 VLM form missing image arg in inference signature"
+    )
+
+
+def test_t2_vlm_extracts_text_from_generation_result():
+    """T2 VLM form must extract .text from mlx_vlm.generate's GenerationResult.
+    mlx_vlm.generate returns a dataclass with .text attribute, not a bare str —
+    preserving the source's str return type requires .text extraction."""
+    section = _template_section("T2")
+    vlm_split = section.split("### VLM", 1)
+    assert len(vlm_split) == 2, "T2 missing '### VLM' subsection"
+    vlm_section = vlm_split[1]
+    assert ".text" in vlm_section, (
+        "T2 VLM form missing .text extraction — mlx_vlm.generate returns "
+        "GenerationResult, not a str. Use result.text to preserve source contract."
+    )
+
+
+def test_t2_vlm_uses_direct_sampling_kwargs():
+    """T2 VLM form must document that sampling kwargs (temperature, top_p,
+    top_k, repetition_penalty) are passed DIRECTLY to mlx_vlm.generate —
+    NOT via make_sampler / make_logits_processors helpers (those are mlx-lm).
+    """
+    section = _template_section("T2")
+    vlm_split = section.split("### VLM", 1)
+    assert len(vlm_split) == 2, "T2 missing '### VLM' subsection"
+    vlm_section = vlm_split[1]
+    assert "temperature" in vlm_section, (
+        "T2 VLM missing 'temperature' kwarg (must be direct kwarg, not "
+        "helper-constructed)"
+    )
+    assert "make_sampler" not in vlm_section, (
+        "T2 VLM form must NOT use make_sampler — that's an mlx-lm helper. "
+        "mlx-vlm accepts sampling kwargs directly."
+    )
+    assert "make_logits_processors" not in vlm_section, (
+        "T2 VLM form must NOT use make_logits_processors — mlx-vlm accepts "
+        "repetition_penalty as a direct kwarg."
+    )
+
+
 def test_t3_contains_apple_silicon_check():
     """T3 must contain the literal platform.machine and platform.system checks."""
     section = _template_section("T3")

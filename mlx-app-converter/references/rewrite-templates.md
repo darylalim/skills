@@ -155,7 +155,55 @@ def load_model():
 
 ## Template T2: Inference
 
-Replace the transformers-style inference body (`tokenizer(...)`, `model.generate(**inputs)`, `tokenizer.decode(...)`) with the single-call `mlx_lm.generate(...)` form. The function signature and name are preserved. Only `max_new_tokens` is a direct kwarg rename to `max_tokens`; sampling parameters (`temperature`, `top_p`, `top_k`, `repetition_penalty`) require constructing helper objects from `mlx_lm.sample_utils`.
+Replace the transformers-style inference body (`tokenizer/processor(...)`,
+`model.generate(**inputs)`, `tokenizer/processor.decode(...)`) with the
+single-call form for the appropriate mlx target package. The function signature
+and name are preserved.
+
+### Dropped or transformed kwargs (both modalities)
+
+| transformers kwarg | Action | Notes |
+|---|---|---|
+| `do_sample=True` | Drop (default behavior) | Both mlx-lm and mlx-vlm sample by default when `temp > 0`. |
+| `do_sample=False` | LLM: map to `make_sampler(temp=0.0)`. VLM: pass `temperature=0.0`. | Forces greedy decoding. |
+| `pad_token_id` | Drop | Not used by either generate function. |
+
+### Unknown kwargs (both modalities)
+
+For any transformers generation kwarg not in the tables above (e.g., `min_length`, `num_beams`, `eos_token_id`, `renormalize_logits`), **drop it from the generated call site** and add a `# TODO` comment immediately above the `mlx_lm.generate` / `mlx_vlm.generate` call describing the dropped kwarg. Do not pass unknown kwargs through — both `generate` functions reject them with `TypeError`.
+
+Example (original code used `min_length=20` with VLM):
+
+```python
+import mlx_vlm
+
+
+def run_inference(prompt: str, image, model, processor) -> str:
+    # TODO: min_length=20 not supported by mlx-vlm — review manually
+    return mlx_vlm.generate(model, processor, prompt, image, max_tokens=200).text
+```
+
+### Preservation rules (both modalities)
+
+- The function name and parameter list are preserved (renames apply to known kwargs only; unknown kwargs are dropped from the call but their original parameter, if any, may need to be removed too if it's only used at the dropped call site).
+- The return type (`str`) is preserved. `mlx_lm.generate` returns a string directly. `mlx_vlm.generate` returns a `GenerationResult` dataclass — append `.text` to extract the string and preserve the source's contract.
+- Type hints are preserved verbatim.
+- VLM source apps' image parameter (positional or keyword) is preserved; `mlx_vlm.generate` accepts image positionally so the source signature can pass through without conversion.
+- If the original function returned a list of dicts (e.g., from `transformers.pipeline`), wrap the result to match: `return [{"generated_text": <result>}]`.
+
+### Import handling
+
+- Add `import mlx_lm` (LLM only) or `import mlx_vlm` (VLM only) or both (multi-modal), deduped.
+- If LLM sampling parameters are used in the original code, add `from mlx_lm.sample_utils import make_logits_processors, make_sampler` (only the helpers actually needed).
+- VLM sampling parameters require no extra imports — they're direct kwargs.
+- Other `transformers` imports (e.g., `pipeline`, `AutoConfig` used elsewhere) are left alone.
+
+### LLM form (mlx-lm)
+
+The function signature and name are preserved. Only `max_new_tokens` is a direct
+kwarg rename to `max_tokens`; sampling parameters (`temperature`, `top_p`,
+`top_k`, `repetition_penalty`) require constructing helper objects from
+`mlx_lm.sample_utils`.
 
 **Before (no sampling kwargs):**
 
@@ -176,15 +224,16 @@ def run_inference(prompt: str, model, tokenizer, max_tokens: int = 200) -> str:
     return mlx_lm.generate(model, tokenizer, prompt, max_tokens=max_tokens)
 ```
 
-### Direct kwarg rename
+#### Direct kwarg rename (LLM)
 
 | transformers kwarg | mlx_lm kwarg | Notes |
 |---|---|---|
 | `max_new_tokens` | `max_tokens` | Direct rename. Only kwarg that maps 1:1. |
 
-### Sampling parameters (helper construction required)
+#### Sampling parameters (helper construction required, LLM only)
 
-`mlx_lm.generate` does not accept sampling kwargs directly. Wrap them via `mlx_lm.sample_utils.make_sampler` and `make_logits_processors`.
+`mlx_lm.generate` does not accept sampling kwargs directly. Wrap them via
+`mlx_lm.sample_utils.make_sampler` and `make_logits_processors`.
 
 **Before (with sampling kwargs):**
 
@@ -229,41 +278,99 @@ def run_inference(prompt: str, model, tokenizer) -> str:
 | `top_k` | `make_sampler(top_k=...)` | Pass to `make_sampler`. |
 | `repetition_penalty` | `make_logits_processors(repetition_penalty=...)` | Pass to `make_logits_processors`. |
 
-### Dropped or transformed kwargs
+### VLM form (mlx-vlm)
 
-| transformers kwarg | Action | Notes |
-|---|---|---|
-| `do_sample=True` | Drop (default behavior) | mlx-lm samples by default when `temp > 0`. |
-| `do_sample=False` | Map to `make_sampler(temp=0.0)` | Forces greedy decoding. Add `temp=0.0` to the constructed sampler regardless of any `temperature` kwarg. |
-| `pad_token_id` | Drop | Not used by `mlx_lm.generate`; pad handling is internal. |
+`mlx_vlm.generate` accepts sampling kwargs **directly** — no helper construction
+required (unlike mlx-lm). The inference function passes the image positionally;
+max_new_tokens is renamed to max_tokens identically to LLM form. **Critical:**
+`mlx_vlm.generate` returns a `GenerationResult` dataclass — append `.text` to
+extract the string and preserve the source's `str` return contract.
 
-### Unknown kwargs
-
-For any transformers generation kwarg not in the tables above (e.g., `min_length`, `num_beams`, `eos_token_id`, `renormalize_logits`), **drop it from the generated call site** and add a `# TODO` comment immediately above the `mlx_lm.generate` call describing the dropped kwarg. Do not pass unknown kwargs through — `generate_step` rejects them with `TypeError`.
-
-Example (original code used `min_length=20`):
+**Before (no sampling kwargs):**
 
 ```python
-import mlx_lm
-
-
-def run_inference(prompt: str, model, tokenizer) -> str:
-    # TODO: min_length=20 not supported by mlx-lm — review manually
-    return mlx_lm.generate(model, tokenizer, prompt, max_tokens=200)
+def run_inference(
+    prompt: str, image, model, processor, max_new_tokens: int = 200
+) -> str:
+    inputs = processor(text=prompt, images=image, return_tensors="pt")
+    outputs = model.generate(**inputs, max_new_tokens=max_new_tokens)
+    return processor.decode(outputs[0], skip_special_tokens=True)
 ```
 
-### Preservation rules
+**After (no sampling kwargs):**
 
-- The function name and parameter list are preserved (renames apply to known kwargs only; unknown kwargs are dropped from the call but their original parameter, if any, may need to be removed too if it's only used at the dropped call site).
-- The return type (`str`) is preserved — `mlx_lm.generate` returns the decoded text directly.
-- Type hints are preserved verbatim.
-- If the original function returned a list of dicts (e.g., from `transformers.pipeline`), wrap the `mlx_lm.generate` result to match: `return [{"generated_text": <result>}]`.
+```python
+import mlx_vlm
 
-### Import handling
 
-- Add `import mlx_lm` if not already added by T1.
-- If sampling parameters are used in the original code, add `from mlx_lm.sample_utils import make_logits_processors, make_sampler` (only the helpers actually needed).
-- Other `transformers` imports (e.g., `pipeline`, `AutoConfig` used elsewhere) are left alone.
+def run_inference(
+    prompt: str, image, model, processor, max_tokens: int = 200
+) -> str:
+    return mlx_vlm.generate(
+        model, processor, prompt, image, max_tokens=max_tokens
+    ).text
+```
+
+**Before (with sampling kwargs):**
+
+```python
+def run_inference(prompt: str, image, model, processor) -> str:
+    inputs = processor(text=prompt, images=image, return_tensors="pt")
+    outputs = model.generate(
+        **inputs,
+        max_new_tokens=200,
+        temperature=0.7,
+        top_p=0.9,
+        top_k=50,
+        repetition_penalty=1.1,
+    )
+    return processor.decode(outputs[0], skip_special_tokens=True)
+```
+
+**After (with sampling kwargs):**
+
+```python
+import mlx_vlm
+
+
+def run_inference(prompt: str, image, model, processor) -> str:
+    return mlx_vlm.generate(
+        model,
+        processor,
+        prompt,
+        image,
+        max_tokens=200,
+        temperature=0.7,
+        top_p=0.9,
+        top_k=50,
+        repetition_penalty=1.1,
+    ).text
+```
+
+#### Direct kwarg map (VLM)
+
+| transformers kwarg | mlx_vlm kwarg | Notes |
+|---|---|---|
+| `max_new_tokens` | `max_tokens` | Direct rename. |
+| `temperature` | `temperature` | Direct kwarg on `mlx_vlm.generate`. |
+| `top_p` | `top_p` | Direct kwarg. |
+| `top_k` | `top_k` | Direct kwarg. |
+| `repetition_penalty` | `repetition_penalty` | Direct kwarg. |
+
+The VLM kwarg surface is simpler than LLM because mlx-vlm exposes sampling as
+direct kwargs rather than requiring helper construction (as mlx-lm does).
+
+#### Image input types (VLM)
+
+`mlx_vlm.generate` accepts the image arg as one of:
+- `str` — file path (e.g., `"images/cat.jpg"`).
+- `str` — HTTP/HTTPS URL (e.g., `"https://example.com/cat.jpg"`).
+- `PIL.Image.Image` — already-loaded PIL image.
+- `list` of any of the above for multi-image VLMs.
+
+The skill does not need to convert image types — source apps that already pass
+PIL images, file paths, or URLs work without modification because mlx-vlm
+accepts the same set.
 
 ## Template T3: Apple Silicon runtime guard
 
