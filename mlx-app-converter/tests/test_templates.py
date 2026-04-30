@@ -257,18 +257,20 @@ def test_t2_vlm_uses_direct_sampling_kwargs():
     NOT via make_sampler / make_logits_processors helpers (those are mlx-lm).
     """
     section = _template_section("T2")
-    vlm_split = section.split("### VLM", 1)
-    assert len(vlm_split) == 2, "T2 missing '### VLM' subsection"
+    vlm_split = section.split("### VLM form (mlx-vlm)", 1)
+    assert len(vlm_split) == 2, "T2 missing '### VLM form (mlx-vlm)' subsection"
     vlm_section = vlm_split[1]
-    assert "temperature" in vlm_section, (
+    # Extract only the VLM form subsection (up to the next ### heading)
+    vlm_form_only = vlm_section.split("### ", 1)[0]
+    assert "temperature" in vlm_form_only, (
         "T2 VLM missing 'temperature' kwarg (must be direct kwarg, not "
         "helper-constructed)"
     )
-    assert "make_sampler" not in vlm_section, (
+    assert "make_sampler" not in vlm_form_only, (
         "T2 VLM form must NOT use make_sampler — that's an mlx-lm helper. "
         "mlx-vlm accepts sampling kwargs directly."
     )
-    assert "make_logits_processors" not in vlm_section, (
+    assert "make_logits_processors" not in vlm_form_only, (
         "T2 VLM form must NOT use make_logits_processors — mlx-vlm accepts "
         "repetition_penalty as a direct kwarg."
     )

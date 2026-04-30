@@ -160,44 +160,6 @@ Replace the transformers-style inference body (`tokenizer/processor(...)`,
 single-call form for the appropriate mlx target package. The function signature
 and name are preserved.
 
-### Dropped or transformed kwargs (both modalities)
-
-| transformers kwarg | Action | Notes |
-|---|---|---|
-| `do_sample=True` | Drop (default behavior) | Both mlx-lm and mlx-vlm sample by default when `temp > 0`. |
-| `do_sample=False` | LLM: map to `make_sampler(temp=0.0)`. VLM: pass `temperature=0.0`. | Forces greedy decoding. |
-| `pad_token_id` | Drop | Not used by either generate function. |
-
-### Unknown kwargs (both modalities)
-
-For any transformers generation kwarg not in the tables above (e.g., `min_length`, `num_beams`, `eos_token_id`, `renormalize_logits`), **drop it from the generated call site** and add a `# TODO` comment immediately above the `mlx_lm.generate` / `mlx_vlm.generate` call describing the dropped kwarg. Do not pass unknown kwargs through — both `generate` functions reject them with `TypeError`.
-
-Example (original code used `min_length=20` with VLM):
-
-```python
-import mlx_vlm
-
-
-def run_inference(prompt: str, image, model, processor) -> str:
-    # TODO: min_length=20 not supported by mlx-vlm — review manually
-    return mlx_vlm.generate(model, processor, prompt, image, max_tokens=200).text
-```
-
-### Preservation rules (both modalities)
-
-- The function name and parameter list are preserved (renames apply to known kwargs only; unknown kwargs are dropped from the call but their original parameter, if any, may need to be removed too if it's only used at the dropped call site).
-- The return type (`str`) is preserved. `mlx_lm.generate` returns a string directly. `mlx_vlm.generate` returns a `GenerationResult` dataclass — append `.text` to extract the string and preserve the source's contract.
-- Type hints are preserved verbatim.
-- VLM source apps' image parameter (positional or keyword) is preserved; `mlx_vlm.generate` accepts image positionally so the source signature can pass through without conversion.
-- If the original function returned a list of dicts (e.g., from `transformers.pipeline`), wrap the result to match: `return [{"generated_text": <result>}]`.
-
-### Import handling
-
-- Add `import mlx_lm` (LLM only) or `import mlx_vlm` (VLM only) or both (multi-modal), deduped.
-- If LLM sampling parameters are used in the original code, add `from mlx_lm.sample_utils import make_logits_processors, make_sampler` (only the helpers actually needed).
-- VLM sampling parameters require no extra imports — they're direct kwargs.
-- Other `transformers` imports (e.g., `pipeline`, `AutoConfig` used elsewhere) are left alone.
-
 ### LLM form (mlx-lm)
 
 The function signature and name are preserved. Only `max_new_tokens` is a direct
@@ -371,6 +333,44 @@ direct kwargs rather than requiring helper construction (as mlx-lm does).
 The skill does not need to convert image types — source apps that already pass
 PIL images, file paths, or URLs work without modification because mlx-vlm
 accepts the same set.
+
+### Dropped or transformed kwargs (both modalities)
+
+| transformers kwarg | Action | Notes |
+|---|---|---|
+| `do_sample=True` | Drop (default behavior) | Both mlx-lm and mlx-vlm sample by default when `temp > 0`. |
+| `do_sample=False` | LLM: map to `make_sampler(temp=0.0)`. VLM: pass `temperature=0.0`. | Forces greedy decoding. |
+| `pad_token_id` | Drop | Not used by either generate function. |
+
+### Unknown kwargs (both modalities)
+
+For any transformers generation kwarg not in the tables above (e.g., `min_length`, `num_beams`, `eos_token_id`, `renormalize_logits`), **drop it from the generated call site** and add a `# TODO` comment immediately above the `mlx_lm.generate` / `mlx_vlm.generate` call describing the dropped kwarg. Do not pass unknown kwargs through — both `generate` functions reject them with `TypeError`.
+
+Example (original code used `min_length=20` with VLM):
+
+```python
+import mlx_vlm
+
+
+def run_inference(prompt: str, image, model, processor) -> str:
+    # TODO: min_length=20 not supported by mlx-vlm — review manually
+    return mlx_vlm.generate(model, processor, prompt, image, max_tokens=200).text
+```
+
+### Preservation rules (both modalities)
+
+- The function name and parameter list are preserved (renames apply to known kwargs only; unknown kwargs are dropped from the call but their original parameter, if any, may need to be removed too if it's only used at the dropped call site).
+- The return type (`str`) is preserved. `mlx_lm.generate` returns a string directly. `mlx_vlm.generate` returns a `GenerationResult` dataclass — append `.text` to extract the string and preserve the source's contract.
+- Type hints are preserved verbatim.
+- VLM source apps' image parameter (positional or keyword) is preserved; `mlx_vlm.generate` accepts image positionally so the source signature can pass through without conversion.
+- If the original function returned a list of dicts (e.g., from `transformers.pipeline`), wrap the result to match: `return [{"generated_text": <result>}]`.
+
+### Import handling
+
+- Add `import mlx_lm` (LLM only) or `import mlx_vlm` (VLM only) or both (multi-modal), deduped.
+- If LLM sampling parameters are used in the original code, add `from mlx_lm.sample_utils import make_logits_processors, make_sampler` (only the helpers actually needed).
+- VLM sampling parameters require no extra imports — they're direct kwargs.
+- Other `transformers` imports (e.g., `pipeline`, `AutoConfig` used elsewhere) are left alone.
 
 ## Template T3: Apple Silicon runtime guard
 
