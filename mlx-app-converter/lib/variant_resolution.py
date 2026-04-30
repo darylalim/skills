@@ -30,6 +30,18 @@ QUANTIZATION_PRECEDENCE: tuple[str, ...] = ("bf16", "fp16", "8bit", "6bit", "4bi
 # parse_param_count normalizes the output to uppercase regardless of input.
 _PARAM_COUNT_RE = re.compile(r"\b(\d+(?:\.\d+)?)B\b", re.IGNORECASE)
 
+# Whisper named-size precedence (smallest → largest by release/capability).
+# Drives row ordering for ASR variant matrices.
+SIZE_NAME_ORDER: tuple[str, ...] = (
+    "tiny", "base", "small", "medium",
+    "large", "large-v2", "large-v3", "large-v3-turbo",
+)
+
+_SIZE_NAME_RE = re.compile(
+    r"\b(tiny|base|small|medium|large(?:-v\d+)?(?:-turbo)?)\b",
+    re.IGNORECASE,
+)
+
 # Suffix patterns that mark a standard mlx-lm quantized variant.
 _QUANT_SUFFIXES = tuple(f"-{q}" for q in QUANTIZATION_PRECEDENCE)
 
@@ -56,6 +68,16 @@ def parse_quantization(name: str) -> str | None:
             if stem.endswith(suffix):
                 return suffix.lstrip("-")
     return None
+
+
+def parse_size_name(name: str) -> str | None:
+    """Return the first 'tiny'/'base'/.../'large-v3-turbo' token in *name*, or None.
+
+    Used for the audio modality (Whisper-family); LLM/VLM modalities use
+    parse_param_count instead. The returned string is lowercased.
+    """
+    m = _SIZE_NAME_RE.search(name)
+    return m.group(1).lower() if m else None
 
 
 # ---------------------------------------------------------------------------

@@ -547,3 +547,56 @@ def test_render_matrix_renders_vlm_dense():
     assert "* 7B (orig)" in output or "*7B (orig)" in output
     assert "bf16" in output
     assert "4bit" in output
+
+
+# ---------------------------------------------------------------------------
+# parse_size_name (audio modality)
+# ---------------------------------------------------------------------------
+
+
+class TestParseSizeName:
+    def test_tiny(self):
+        assert vr.parse_size_name("whisper-tiny-mlx") == "tiny"
+
+    def test_base(self):
+        assert vr.parse_size_name("whisper-base-fp16") == "base"
+
+    def test_small(self):
+        assert vr.parse_size_name("whisper-small-4bit") == "small"
+
+    def test_medium(self):
+        assert vr.parse_size_name("whisper-medium-bf16") == "medium"
+
+    def test_large(self):
+        assert vr.parse_size_name("whisper-large-fp16") == "large"
+
+    def test_large_v2(self):
+        assert vr.parse_size_name("whisper-large-v2-bf16") == "large-v2"
+
+    def test_large_v3(self):
+        assert vr.parse_size_name("whisper-large-v3-bf16") == "large-v3"
+
+    def test_large_v3_turbo(self):
+        assert vr.parse_size_name("whisper-large-v3-turbo-fp16") == "large-v3-turbo"
+
+    def test_uppercase_normalizes(self):
+        assert vr.parse_size_name("Whisper-LARGE-V3-Turbo-bf16") == "large-v3-turbo"
+
+    def test_no_size_returns_none(self):
+        assert vr.parse_size_name("whisper-distil-en-fp16") is None
+
+    def test_substring_in_word_no_match(self):
+        # "tinyhuman" should not match "tiny" — \b word boundary required.
+        assert vr.parse_size_name("tinyhuman-fp16") is None
+
+    def test_full_model_id_with_prefix(self):
+        assert vr.parse_size_name("mlx-community/whisper-large-v3-bf16") == "large-v3"
+
+
+class TestSizeNameOrder:
+    def test_order_is_ascending(self):
+        order = vr.SIZE_NAME_ORDER
+        assert order.index("tiny") < order.index("base") < order.index("small")
+        assert order.index("small") < order.index("medium") < order.index("large")
+        assert order.index("large") < order.index("large-v2") < order.index("large-v3")
+        assert order.index("large-v3") < order.index("large-v3-turbo")
