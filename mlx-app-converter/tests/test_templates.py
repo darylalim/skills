@@ -477,7 +477,7 @@ def test_skill_md_step3_documents_model_id_dedup():
     by string value before matrix construction (so two from_pretrained calls
     referencing the same MODEL_ID produce one matrix prompt, not two)."""
     text = SKILL_MD.read_text()
-    assert "Deduplicate by model ID" in text, (
+    assert "Deduplicate by" in text and "model ID" in text, (
         "SKILL.md missing model-ID deduplication note in Step 3"
     )
 
@@ -573,4 +573,99 @@ def test_outputs_section_files_referenced_in_workflow():
     missing = concrete_outputs - workflow_files
     assert not missing, (
         f"Files in Outputs section but not referenced in Workflow: {sorted(missing)}"
+    )
+
+
+# === v2 VLM-specific structural tests ===
+
+VLM_ALLOWLIST = [
+    "AutoModelForVision2Seq",
+    "AutoModelForImageTextToText",
+    "LlavaForConditionalGeneration",
+    "LlavaNextForConditionalGeneration",
+    "Qwen2VLForConditionalGeneration",
+    "Qwen2_5_VLForConditionalGeneration",
+    "Idefics3ForConditionalGeneration",
+    "PaliGemmaForConditionalGeneration",
+    "MllamaForConditionalGeneration",
+]
+
+
+def test_skill_md_description_mentions_vlm():
+    """SKILL.md YAML description must mention VLM/mlx-vlm so the trigger
+    description picks up VLM conversion requests."""
+    text = SKILL_MD.read_text()
+    assert "VLM" in text or "mlx-vlm" in text, (
+        "SKILL.md description must mention VLM or mlx-vlm to trigger on "
+        "VLM-conversion requests"
+    )
+
+
+def test_skill_md_step3_documents_modality_tagging():
+    """SKILL.md Step 3 must describe the per-call-site modality tagging logic
+    (LLM vs VLM allowlist matching)."""
+    text = SKILL_MD.read_text()
+    assert "modality" in text.lower(), (
+        "SKILL.md Step 3 missing modality-tagging description"
+    )
+
+
+def test_skill_md_step3_lists_full_vlm_allowlist():
+    """SKILL.md Step 3 must enumerate every entry of the VLM allowlist."""
+    text = SKILL_MD.read_text()
+    for entry in VLM_ALLOWLIST:
+        assert entry in text, (
+            f"SKILL.md missing VLM allowlist entry: {entry}"
+        )
+
+
+def test_skill_md_step3_streaming_gate_present():
+    """SKILL.md Step 3 must document the streaming-detection gate."""
+    text = SKILL_MD.read_text()
+    assert "TextIteratorStreamer" in text, (
+        "SKILL.md Step 3 missing TextIteratorStreamer reference (streaming gate)"
+    )
+    assert "streaming" in text.lower(), (
+        "SKILL.md Step 3 missing 'streaming' keyword in gate description"
+    )
+
+
+def test_skill_md_step5_describes_modality_routing():
+    """SKILL.md Step 5 must describe per-detected-model template routing."""
+    text = SKILL_MD.read_text()
+    assert "mlx_vlm" in text or "mlx-vlm" in text, (
+        "SKILL.md Step 5 missing mlx-vlm routing target"
+    )
+
+
+def test_skill_md_out_of_scope_lists_streaming():
+    """SKILL.md 'Out of scope (v2)' must list streaming inference."""
+    text = SKILL_MD.read_text()
+    out_of_scope = re.search(
+        r"## Out of scope \(v2\).*?(?=^## |\Z)",
+        text, re.MULTILINE | re.DOTALL,
+    )
+    assert out_of_scope, "SKILL.md missing '## Out of scope (v2)' section"
+    body = out_of_scope.group(0)
+    assert "streaming" in body.lower(), (
+        "SKILL.md Out-of-scope section missing streaming inference deferral"
+    )
+
+
+V2_NEW_REJECTION_MESSAGES = [
+    "model class",
+    "is not in v2's supported list",
+    "Streaming inference detected at",
+    "v2 supports non-streaming inference only",
+]
+
+
+def test_v2_rejection_messages_present_in_skill_md():
+    """The two new v2 rejection messages (class-allowlist + streaming) must
+    appear in SKILL.md."""
+    skill_text = SKILL_MD.read_text()
+    missing = [msg for msg in V2_NEW_REJECTION_MESSAGES if msg not in skill_text]
+    assert not missing, (
+        "v2 rejection-message snippets missing from SKILL.md:\n  - "
+        + "\n  - ".join(missing)
     )
