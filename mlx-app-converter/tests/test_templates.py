@@ -177,12 +177,6 @@ def test_t1_preserves_cache_decorators():
     assert "@lru_cache(maxsize=1)" in section, "T1 missing @lru_cache(maxsize=1)"
 
 
-def test_t1_has_vlm_subsection():
-    """T1 must contain a VLM subsection covering both Streamlit and Gradio."""
-    section = _template_section("T1")
-    assert "### VLM" in section, "T1 missing '### VLM' subsection"
-
-
 def test_t1_vlm_uses_mlx_vlm_load():
     """T1 VLM form must use mlx_vlm.load (not from_pretrained)."""
     vlm_section = _vlm_subsection("T1")
@@ -229,12 +223,6 @@ def test_t2_documents_sampler_helper_construction():
     assert "from mlx_lm.sample_utils import" in section, (
         "T2 missing the sample_utils import showing helper origin"
     )
-
-
-def test_t2_has_vlm_subsection():
-    """T2 must contain a VLM subsection covering mlx_vlm.generate."""
-    section = _template_section("T2")
-    assert "### VLM" in section, "T2 missing '### VLM' subsection"
 
 
 def test_t2_vlm_uses_mlx_vlm_generate():
@@ -304,12 +292,6 @@ def test_t4_mocks_mlx_lm_load():
     """T4 must show the mock target as mlx_lm.load (not from_pretrained)."""
     section = _template_section("T4")
     assert "mlx_lm.load" in section, "T4 missing mlx_lm.load as mock target"
-
-
-def test_t4_has_vlm_subsection():
-    """T4 must contain a VLM subsection covering mlx_vlm.load mock target."""
-    section = _template_section("T4")
-    assert "### VLM" in section, "T4 missing '### VLM' subsection"
 
 
 def test_t4_vlm_mocks_mlx_vlm_load():
