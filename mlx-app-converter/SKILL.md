@@ -47,8 +47,8 @@ Converts an existing Streamlit or Gradio app from `transformers`-based inference
      - The function references `TextIteratorStreamer` (imported or used), OR
      - The function has a `yield` statement AND the corresponding `model.generate(...)` call passes a `streamer=` kwarg.
      - On match: `Streaming inference detected at <call site>. v2 supports non-streaming inference only; streaming is planned for a follow-up version.`
-   - **Dynamic args** (env var, UI input, function call) → soft per-model rejection: `Skipping <call site>: model ID is dynamic (env var or runtime input). v1 supports only statically-known model IDs.`
-   - If zero literal model IDs remain after resolution: `No HF model IDs found in <file>. mlx-app-converter requires statically-known model IDs (string literal or simple constant). Dynamic IDs (env var, UI input) are not supported in v1.`
+   - **Dynamic args** (env var, UI input, function call) → soft per-model rejection: `Skipping <call site>: model ID is dynamic (env var or runtime input). Only statically-known model IDs are supported.`
+   - If zero literal model IDs remain after resolution: `No HF model IDs found in <file>. mlx-app-converter requires statically-known model IDs (string literal or simple constant). Dynamic IDs (env var, UI input) are not supported.`
    - **Deduplicate by (model ID, modality) pair** before the next step. The canonical loader pattern uses two `from_pretrained` calls referencing the same `MODEL_ID` — tokenizer+model for LLMs, processor+model for VLMs — these collapse to one matrix prompt, not two.
    - **If every detected model hits a soft rejection** (class-mismatch, streaming, dynamic-args, or all-skipped via Step 4's no-match fallback), exit with: `Nothing to convert — every detected model was skipped. The app file was not modified.`
 

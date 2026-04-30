@@ -441,12 +441,12 @@ REJECTION_MESSAGES = [
     "Commit or stash before running mlx-app-converter so the rewrite is reviewable via git diff.",
     # gate 6 — no detectable models
     "No HF model IDs found in",
-    "mlx-app-converter requires statically-known model IDs (string literal or simple constant). Dynamic IDs (env var, UI input) are not supported in v1.",
+    "mlx-app-converter requires statically-known model IDs (string literal or simple constant). Dynamic IDs (env var, UI input) are not supported.",
     # gate 7 — no MLX variants (soft)
     "No MLX variants found for",
     "Pick one or reply \"skip\" to leave this model unchanged.",
     # gate 8 — dynamic model arg (soft)
-    "model ID is dynamic (env var or runtime input). v1 supports only statically-known model IDs.",
+    "model ID is dynamic (env var or runtime input). Only statically-known model IDs are supported.",
 ]
 
 
