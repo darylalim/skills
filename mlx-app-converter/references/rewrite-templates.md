@@ -399,7 +399,13 @@ if not (platform.machine() == "arm64" and platform.system() == "Darwin"):
 
 ## Template T4: Test rewrite
 
-If a test file (`test_app.py`, `test_streamlit_app.py`, `test_gradio_app.py`, or any `test_*.py` next to the app file) exists, update its mocks from `transformers.*.from_pretrained` to `mlx_lm.load`. The test file is otherwise left in place — the skill modifies only the mock targets and the inference invocation.
+If a test file (`test_app.py`, `test_streamlit_app.py`, `test_gradio_app.py`,
+or any `test_*.py` next to the app file) exists, update its mocks from
+`transformers.*.from_pretrained` to the appropriate mlx loader. The test file
+is otherwise left in place — the skill modifies only the mock targets and the
+inference invocation.
+
+### LLM form (mlx-lm)
 
 **Before:**
 
@@ -444,12 +450,62 @@ def test_run_inference_returns_string(mock_load):
     assert result == "hello"
 ```
 
-**Preservation rules:**
+### VLM form (mlx-vlm)
+
+**Before:**
+
+```python
+from unittest.mock import MagicMock, patch
+
+from streamlit_app import run_inference
+
+
+@patch("streamlit_app.AutoProcessor.from_pretrained")
+@patch("streamlit_app.AutoModelForVision2Seq.from_pretrained")
+def test_run_inference_returns_string(mock_model_cls, mock_processor_cls):
+    mock_processor = MagicMock()
+    mock_processor.decode.return_value = "a cat"
+    mock_processor_cls.return_value = mock_processor
+    mock_model = MagicMock()
+    mock_model.generate.return_value = [[1, 2, 3]]
+    mock_model_cls.return_value = mock_model
+
+    result = run_inference("describe", "cat.jpg", mock_model, mock_processor)
+
+    assert result == "a cat"
+```
+
+**After:**
+
+```python
+from unittest.mock import MagicMock, patch
+
+from streamlit_app import run_inference
+
+
+@patch("streamlit_app.mlx_vlm.load")
+def test_run_inference_returns_string(mock_load):
+    mock_model = MagicMock()
+    mock_processor = MagicMock()
+    mock_load.return_value = (mock_model, mock_processor)
+
+    mock_result = MagicMock()
+    mock_result.text = "a cat"
+    with patch("streamlit_app.mlx_vlm.generate", return_value=mock_result):
+        result = run_inference("describe", "cat.jpg", mock_model, mock_processor)
+
+    assert result == "a cat"
+```
+
+### Preservation rules (both modalities)
+
 - Test function names are preserved.
 - Test assertions are preserved.
-- The `mock_load.return_value` is set to a `(mock_model, mock_tokenizer)` tuple so callers of `load_model()` see the same shape as before.
-- `mlx_lm.generate` is mocked separately when the test exercises the inference path; the return value is a string (matching mlx_lm's actual API).
+- The `mock_load.return_value` is set to a tuple matching the source's load-function return shape: `(mock_model, mock_tokenizer)` for LLM, `(mock_model, mock_processor)` for VLM.
+- For LLM, `mlx_lm.generate` is mocked to return a string directly (matches the real API).
+- For VLM, `mlx_vlm.generate` is mocked to return an object with `.text` attribute (matches the real `GenerationResult` dataclass). A `MagicMock` with `.text` set works.
 - If the test file imports `from transformers import ...` directly (uncommon in tests), strip those imports.
+- For multi-modal apps with both LLM and VLM models, patch both `mlx_lm.load` and `mlx_vlm.load` independently.
 
 ## Template T5: Dep manifest delta
 

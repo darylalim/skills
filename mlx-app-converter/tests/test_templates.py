@@ -150,6 +150,26 @@ def _template_section(name: str) -> str:
     return m.group(0)
 
 
+def _vlm_subsection(template_name: str, *, scope: str = "loose") -> str:
+    """Return the VLM subsection of template T<N>.
+
+    scope='loose'  → from '### VLM' onwards (covers VLM form + any subsequent
+                     shared subsections that follow it).
+    scope='strict' → exactly the '### VLM form (...)' subsection up to the next
+                     '### ' heading. Use when negative assertions must not
+                     accidentally match shared-subsection text.
+    """
+    section = _template_section(template_name)
+    parts = section.split("### VLM", 1)
+    assert len(parts) == 2, (
+        f"Template {template_name} missing '### VLM' subsection"
+    )
+    body = parts[1]
+    if scope == "strict":
+        body = body.split("### ", 1)[0]
+    return body
+
+
 def test_t1_preserves_cache_decorators():
     """T1 must show both Streamlit (@st.cache_resource) and Gradio (@lru_cache) variants."""
     section = _template_section("T1")
@@ -165,10 +185,7 @@ def test_t1_has_vlm_subsection():
 
 def test_t1_vlm_uses_mlx_vlm_load():
     """T1 VLM form must use mlx_vlm.load (not from_pretrained)."""
-    section = _template_section("T1")
-    vlm_split = section.split("### VLM", 1)
-    assert len(vlm_split) == 2, "T1 missing '### VLM' subsection (split failed)"
-    vlm_section = vlm_split[1]
+    vlm_section = _vlm_subsection("T1")
     assert "mlx_vlm.load" in vlm_section, (
         "T1 VLM form missing mlx_vlm.load loader call"
     )
@@ -179,10 +196,7 @@ def test_t1_vlm_uses_mlx_vlm_load():
 
 def test_t1_vlm_preserves_cache_decorators():
     """T1 VLM form must preserve both Streamlit and Gradio cache decorators."""
-    section = _template_section("T1")
-    vlm_split = section.split("### VLM", 1)
-    assert len(vlm_split) == 2, "T1 missing '### VLM' subsection"
-    vlm_section = vlm_split[1]
+    vlm_section = _vlm_subsection("T1")
     assert "@st.cache_resource" in vlm_section, (
         "T1 VLM form missing @st.cache_resource (Streamlit cache decorator)"
     )
@@ -225,10 +239,7 @@ def test_t2_has_vlm_subsection():
 
 def test_t2_vlm_uses_mlx_vlm_generate():
     """T2 VLM form must show the mlx_vlm.generate call shape with image arg."""
-    section = _template_section("T2")
-    vlm_split = section.split("### VLM", 1)
-    assert len(vlm_split) == 2, "T2 missing '### VLM' subsection"
-    vlm_section = vlm_split[1]
+    vlm_section = _vlm_subsection("T2")
     assert "mlx_vlm.generate(" in vlm_section, (
         "T2 VLM form missing mlx_vlm.generate call"
     )
@@ -241,10 +252,7 @@ def test_t2_vlm_extracts_text_from_generation_result():
     """T2 VLM form must extract .text from mlx_vlm.generate's GenerationResult.
     mlx_vlm.generate returns a dataclass with .text attribute, not a bare str —
     preserving the source's str return type requires .text extraction."""
-    section = _template_section("T2")
-    vlm_split = section.split("### VLM", 1)
-    assert len(vlm_split) == 2, "T2 missing '### VLM' subsection"
-    vlm_section = vlm_split[1]
+    vlm_section = _vlm_subsection("T2")
     assert ".text" in vlm_section, (
         "T2 VLM form missing .text extraction — mlx_vlm.generate returns "
         "GenerationResult, not a str. Use result.text to preserve source contract."
@@ -256,12 +264,7 @@ def test_t2_vlm_uses_direct_sampling_kwargs():
     top_k, repetition_penalty) are passed DIRECTLY to mlx_vlm.generate —
     NOT via make_sampler / make_logits_processors helpers (those are mlx-lm).
     """
-    section = _template_section("T2")
-    vlm_split = section.split("### VLM form (mlx-vlm)", 1)
-    assert len(vlm_split) == 2, "T2 missing '### VLM form (mlx-vlm)' subsection"
-    vlm_section = vlm_split[1]
-    # Extract only the VLM form subsection (up to the next ### heading)
-    vlm_form_only = vlm_section.split("### ", 1)[0]
+    vlm_form_only = _vlm_subsection("T2", scope="strict")
     assert "temperature" in vlm_form_only, (
         "T2 VLM missing 'temperature' kwarg (must be direct kwarg, not "
         "helper-constructed)"
@@ -301,6 +304,34 @@ def test_t4_mocks_mlx_lm_load():
     """T4 must show the mock target as mlx_lm.load (not from_pretrained)."""
     section = _template_section("T4")
     assert "mlx_lm.load" in section, "T4 missing mlx_lm.load as mock target"
+
+
+def test_t4_has_vlm_subsection():
+    """T4 must contain a VLM subsection covering mlx_vlm.load mock target."""
+    section = _template_section("T4")
+    assert "### VLM" in section, "T4 missing '### VLM' subsection"
+
+
+def test_t4_vlm_mocks_mlx_vlm_load():
+    """T4 VLM form must show patch target as <module>.mlx_vlm.load."""
+    vlm_section = _vlm_subsection("T4")
+    assert "mlx_vlm.load" in vlm_section, (
+        "T4 VLM form missing mlx_vlm.load as mock target"
+    )
+    assert "mock_processor" in vlm_section, (
+        "T4 VLM form missing mock_processor in mock return tuple"
+    )
+
+
+def test_t4_vlm_mock_returns_text_attribute():
+    """T4 VLM form's mlx_vlm.generate mock must return an object with .text
+    attribute, matching mlx_vlm's actual GenerationResult dataclass. A bare
+    string return will not match the real API and the test will mislead."""
+    vlm_section = _vlm_subsection("T4")
+    assert ".text" in vlm_section, (
+        "T4 VLM form missing .text attribute on mlx_vlm.generate's mock — "
+        "the real GenerationResult has .text, not a bare str return."
+    )
 
 
 def test_t5_emits_uv_add_for_streamlit():
