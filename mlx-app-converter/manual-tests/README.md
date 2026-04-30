@@ -14,17 +14,32 @@ templates or rewrite logic.
 
 ```
 manual-tests/
-├── README.md                           # this file
-├── streamlit-llm-fixture/
-│   ├── streamlit_app.py                # input: transformers-based Streamlit chat app
-│   ├── pyproject.toml                  # uv-managed deps
-│   ├── test_streamlit_app.py           # mocked inference test (pre-conversion)
-│   └── EXPECTED.md                     # post-rewrite invariants checklist
-└── gradio-llm-fixture/
-    ├── app.py                          # input: transformers-based Gradio chat app
-    ├── requirements.txt                # pip deps
-    ├── test_app.py                     # mocked inference test (pre-conversion)
-    └── EXPECTED.md                     # post-rewrite invariants checklist
+├── README.md                              # this file
+├── streamlit-llm-fixture/                 # v1 — LLM-only Streamlit
+│   ├── streamlit_app.py
+│   ├── pyproject.toml
+│   ├── test_streamlit_app.py
+│   └── EXPECTED.md
+├── gradio-llm-fixture/                    # v1 — LLM-only Gradio
+│   ├── app.py
+│   ├── requirements.txt
+│   ├── test_app.py
+│   └── EXPECTED.md
+├── streamlit-vlm-fixture/                 # v2 — VLM-only Streamlit
+│   ├── streamlit_app.py
+│   ├── pyproject.toml
+│   ├── test_streamlit_app.py
+│   └── EXPECTED.md
+├── gradio-vlm-fixture/                    # v2 — VLM-only Gradio
+│   ├── app.py
+│   ├── requirements.txt
+│   ├── test_app.py
+│   └── EXPECTED.md
+└── streamlit-multimodal-fixture/          # v2 — LLM + VLM multi-modal Streamlit
+    ├── streamlit_app.py
+    ├── pyproject.toml
+    ├── test_streamlit_app.py
+    └── EXPECTED.md
 ```
 
 ---
@@ -120,6 +135,13 @@ actually running the skill against real input:
 - **Dep manifest path picked incorrectly** — when a Gradio app has both a
   `pyproject.toml` and a `requirements.txt`, T5 must append to
   `requirements.txt` (Spaces convention), not call `uv add`.
+- **VLM mock target wrong** — T4-VLM mocks `mlx_vlm.load` (not `mlx_lm.load` or `from_pretrained`). Wrong target leaves the test patching nothing and the real `mlx_vlm.load` runs, which fails when MLX weights aren't available.
+- **VLM processor preserved instead of replaced** — T1-VLM removes `AutoProcessor.from_pretrained(...)` and folds it into `mlx_vlm.load(MODEL_ID)`'s tuple return. Skipping this leaves a stale processor load that fails or duplicates work.
+- **Sampling kwargs incorrectly helper-routed for VLM** — `mlx_vlm.generate` accepts `temperature`, `top_p`, etc. directly. Wrapping them in `make_sampler` (the LLM pattern) raises `TypeError` because `make_sampler` is from `mlx_lm.sample_utils`, not mlx-vlm.
+- **Multi-modal import duplication** — files with both LLM and VLM models must have one `import mlx_lm` line AND one `import mlx_vlm` line, deduped — not two of either.
+- **Multi-modal dep delta split incorrectly** — multi-modal Streamlit apps must print a single `uv add mlx-lm mlx-vlm` command. Splitting into two commands creates two lockfile updates and is a workflow regression.
+- **Apple Silicon guard placed below an mlx import** — for multi-modal files, both `import mlx_lm` AND `import mlx_vlm` must come AFTER the platform check, not before.
+- **Streaming source not soft-rejected** — apps using `TextIteratorStreamer` should hit the v2 streaming gate. If the skill silently rewrites them and drops `streamer=`, the function's return type changes from generator to str, breaking the UI.
 
 ---
 

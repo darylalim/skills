@@ -1,0 +1,17 @@
+[project]
+name = "streamlit-multimodal-fixture"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "streamlit",
+    "transformers",
+    "torch",
+    "pillow",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "ruff",
+    "ty",
+]
