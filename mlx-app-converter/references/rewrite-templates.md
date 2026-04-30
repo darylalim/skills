@@ -509,34 +509,73 @@ def test_run_inference_returns_string(mock_load):
 
 ## Template T5: Dep manifest delta
 
-Update the project's dependency file to add `mlx-lm`. The skill picks the manifest **by framework, not by file presence**, because Streamlit apps deployed to Hugging Face Spaces use `requirements.txt` even when `pyproject.toml` is also present in the repo:
+Update the project's dependency file to add the appropriate mlx target package(s).
+The skill picks the manifest **by framework, not by file presence**, because
+Streamlit apps deployed to Hugging Face Spaces use `requirements.txt` even when
+`pyproject.toml` is also present in the repo:
 
 - **Framework = Streamlit** → use `pyproject.toml` if present (uv-managed); otherwise fall back to `requirements.txt`.
 - **Framework = Gradio** → use `requirements.txt` (Spaces convention).
 
-The framework was already detected in the pre-flight gates (Step 2's framework gate), so re-use that signal rather than re-deriving from file existence. If the framework-selected manifest does not exist, exit with: `Expected <manifest> for <framework> framework; not found. Cannot add mlx-lm dependency.`
+The framework was already detected in the pre-flight gates (Step 2's framework gate),
+so re-use that signal rather than re-deriving from file existence. If the
+framework-selected manifest does not exist, exit with: `Expected <manifest> for
+<framework> framework; not found. Cannot add mlx-lm dependency.`
 
-**Streamlit (uv-managed `pyproject.toml`):**
+### Modality-set parameterization
 
-The skill prints (does not auto-execute) the following command for the user to run:
+The set of target packages added to the manifest depends on which modalities
+were detected in the file:
+
+| Detected modalities | Target package set |
+|---|---|
+| LLM only (`AutoModelForCausalLM`) | `{mlx-lm}` |
+| VLM only (`AutoModelForVision2Seq` / family-specific VLM class) | `{mlx-vlm}` |
+| Multi-modal (LLM + VLM models in same file) | `{mlx-lm, mlx-vlm}` |
+
+The skill emits the install command (Streamlit) or appends lines (Gradio) for
+the full set in one operation.
+
+### Streamlit (uv-managed `pyproject.toml`)
+
+The skill prints (does not auto-execute) one of the following commands depending
+on the detected modality set:
 
 ```
 uv add mlx-lm
 ```
 
-The skill does not directly edit `pyproject.toml` — it lets `uv add` handle the toml manipulation, including version pinning and lockfile update.
+```
+uv add mlx-vlm
+```
 
-**Gradio (or Streamlit fallback) — `requirements.txt`:**
+```
+uv add mlx-lm mlx-vlm
+```
 
-The skill appends a single line to `requirements.txt`:
+The skill does not directly edit `pyproject.toml` — it lets `uv add` handle the
+toml manipulation, including version pinning and lockfile update.
+
+### Gradio (or Streamlit fallback) — `requirements.txt`
+
+The skill appends one or both of the following lines to `requirements.txt`,
+depending on the modality set:
 
 ```
 mlx-lm
 ```
 
-If `requirements.txt` already contains an `mlx-lm` line (pinned or unpinned), no change is made. The skill does not pin a version unless the user has pinned other deps in the same file (in which case it pins to the latest stable, queried via the HF Hub API alongside the variant resolution step).
+```
+mlx-vlm
+```
 
-**Removal hint (printed to user, both project types):**
+If `requirements.txt` already contains a line for either package (pinned or
+unpinned), no change is made for that line — appends are idempotent. The skill
+does not pin a version unless the user has pinned other deps in the same file
+(in which case it pins to the latest stable, queried via the HF Hub API
+alongside the variant resolution step).
+
+### Removal hint (printed to user, all modality sets)
 
 ```
 Note: transformers and torch are no longer needed for inference in <converted file>.
@@ -551,11 +590,13 @@ If grep returns no matches outside <converted file>, you can remove the deps:
 
 The skill never auto-removes these dependencies because multi-file projects
 commonly use transformers for tokenizer-only tasks (token counting, prompt
-formatting) that mlx-lm does not replace.
+formatting) that mlx-lm / mlx-vlm do not replace.
 ```
 
-**Preservation rules:**
+### Preservation rules
+
 - The skill never auto-removes `transformers` or `torch` from dep files.
 - Other dependencies are not modified.
-- The version pin policy is: pin `mlx-lm` only if the surrounding file uses pins; otherwise leave unpinned.
-- The idempotency rule for `requirements.txt` covers both pinned and unpinned existing `mlx-lm` lines.
+- The version pin policy is: pin `mlx-lm` / `mlx-vlm` only if the surrounding file uses pins; otherwise leave unpinned.
+- The idempotency rule for `requirements.txt` covers both pinned and unpinned existing lines, applied per-package independently.
+- Multi-modal apps emit a single combined `uv add` command (not one per modality) — Streamlit fallback splits across two append lines because `requirements.txt` is line-oriented.

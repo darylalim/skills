@@ -382,6 +382,43 @@ def test_t5_warns_about_multi_file_imports():
     )
 
 
+def test_t5_documents_modality_set_parameterization():
+    """T5 must parameterize the dep delta on the set of target packages
+    (LLM only, VLM only, multi-modal). Each modality combination must show
+    in the section."""
+    section = _template_section("T5")
+    # LLM-only case (existing)
+    assert "uv add mlx-lm" in section, (
+        "T5 missing 'uv add mlx-lm' for LLM-only case"
+    )
+    # VLM-only case (new)
+    assert "uv add mlx-vlm" in section, (
+        "T5 missing 'uv add mlx-vlm' for VLM-only case"
+    )
+    # Multi-modal case (new)
+    assert "uv add mlx-lm mlx-vlm" in section, (
+        "T5 missing 'uv add mlx-lm mlx-vlm' for multi-modal case"
+    )
+
+
+def test_t5_requirements_txt_handles_both_packages():
+    """T5 must show that requirements.txt receives both mlx-lm and mlx-vlm
+    lines for multi-modal Gradio apps."""
+    section = _template_section("T5")
+    assert "mlx-vlm" in section, (
+        "T5 missing mlx-vlm reference for Gradio multi-modal case"
+    )
+
+
+def test_t5_modality_set_table_present():
+    """T5 must contain a parameterization table mapping detected modalities
+    to target package set."""
+    section = _template_section("T5")
+    assert "{mlx-lm}" in section or "{mlx-vlm}" in section, (
+        "T5 missing modality-set notation in parameterization table"
+    )
+
+
 # === Structural consistency tests ===
 
 SKILL_MD = SKILL_ROOT / "SKILL.md"
