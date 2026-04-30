@@ -6,7 +6,12 @@ Templates are referenced from `SKILL.md` by name (T1–T5).
 
 ## Template T1: Loader
 
-Replace the `transformers`-based model-loading function with an `mlx_lm.load`-based equivalent. The cache decorator (`@st.cache_resource` for Streamlit, `@lru_cache(maxsize=1)` for Gradio) is preserved verbatim.
+Replace the `transformers`-based model-loading function with the appropriate
+mlx-target-package equivalent. The cache decorator (`@st.cache_resource` for
+Streamlit, `@lru_cache(maxsize=1)` for Gradio) is preserved verbatim regardless
+of modality.
+
+### LLM form (mlx-lm)
 
 **Streamlit form (before):**
 
@@ -70,15 +75,82 @@ def load_model():
     return mlx_lm.load(MODEL_ID)
 ```
 
-**Preservation rules:**
+### VLM form (mlx-vlm)
+
+**Streamlit form (before):**
+
+```python
+import streamlit as st
+from transformers import AutoModelForVision2Seq, AutoProcessor
+
+MODEL_ID = "Qwen/Qwen2-VL-7B-Instruct"
+
+
+@st.cache_resource
+def load_model():
+    processor = AutoProcessor.from_pretrained(MODEL_ID)
+    model = AutoModelForVision2Seq.from_pretrained(MODEL_ID)
+    return model, processor
+```
+
+**Streamlit form (after):**
+
+```python
+import mlx_vlm
+import streamlit as st
+
+MODEL_ID = "mlx-community/Qwen2-VL-7B-Instruct-bf16"
+
+
+@st.cache_resource
+def load_model():
+    return mlx_vlm.load(MODEL_ID)
+```
+
+**Gradio form (before):**
+
+```python
+from functools import lru_cache
+
+from transformers import AutoModelForVision2Seq, AutoProcessor
+
+MODEL_ID = "Qwen/Qwen2-VL-7B-Instruct"
+
+
+@lru_cache(maxsize=1)
+def load_model():
+    processor = AutoProcessor.from_pretrained(MODEL_ID)
+    model = AutoModelForVision2Seq.from_pretrained(MODEL_ID)
+    return model, processor
+```
+
+**Gradio form (after):**
+
+```python
+from functools import lru_cache
+
+import mlx_vlm
+
+MODEL_ID = "mlx-community/Qwen2-VL-7B-Instruct-bf16"
+
+
+@lru_cache(maxsize=1)
+def load_model():
+    return mlx_vlm.load(MODEL_ID)
+```
+
+### Preservation rules (both modalities)
+
 - The cache decorator (`@st.cache_resource` or `@lru_cache(maxsize=1)`) is preserved verbatim — including any user-supplied arguments to it.
 - The `MODEL_ID` constant name is preserved; only its value is rewritten to the user-selected MLX variant.
-- The function name (`load_model` in the canonical case) and its return shape (`(model, tokenizer)` tuple) are preserved — `mlx_lm.load` returns the same tuple shape.
+- The function name (`load_model` in the canonical case) and its return shape are preserved — `mlx_lm.load` returns `(model, tokenizer)`; `mlx_vlm.load` returns `(model, processor)`. Both match what source apps already return.
 
-**Import handling:**
-- Remove `from transformers import AutoTokenizer, AutoModelForCausalLM` (and any subset).
-- Remove unused `from transformers import AutoTokenizer` / `AutoModelForCausalLM` standalone imports.
-- Add `import mlx_lm` if not already present.
+### Import handling
+
+- Remove `from transformers import AutoTokenizer, AutoModelForCausalLM` (and any subset) for LLM rewrites.
+- Remove `from transformers import AutoProcessor, AutoModelForVision2Seq` (or the family-specific equivalent like `LlavaForConditionalGeneration`) for VLM rewrites.
+- For mixed multi-modal files where `transformers` is still imported by other code paths after rewrite, leave the surviving imports alone.
+- Add `import mlx_lm` for LLM rewrites; `import mlx_vlm` for VLM rewrites; both for multi-modal, deduped.
 - Other `transformers` imports (e.g., `pipeline`, `AutoConfig` used elsewhere in the file) are left alone.
 
 ## Template T2: Inference

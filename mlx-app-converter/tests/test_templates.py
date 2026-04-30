@@ -157,6 +157,40 @@ def test_t1_preserves_cache_decorators():
     assert "@lru_cache(maxsize=1)" in section, "T1 missing @lru_cache(maxsize=1)"
 
 
+def test_t1_has_vlm_subsection():
+    """T1 must contain a VLM subsection covering both Streamlit and Gradio."""
+    section = _template_section("T1")
+    assert "### VLM" in section, "T1 missing '### VLM' subsection"
+
+
+def test_t1_vlm_uses_mlx_vlm_load():
+    """T1 VLM form must use mlx_vlm.load (not from_pretrained)."""
+    section = _template_section("T1")
+    vlm_split = section.split("### VLM", 1)
+    assert len(vlm_split) == 2, "T1 missing '### VLM' subsection (split failed)"
+    vlm_section = vlm_split[1]
+    assert "mlx_vlm.load" in vlm_section, (
+        "T1 VLM form missing mlx_vlm.load loader call"
+    )
+    assert "AutoProcessor" in vlm_section, (
+        "T1 VLM form missing AutoProcessor source-pattern reference"
+    )
+
+
+def test_t1_vlm_preserves_cache_decorators():
+    """T1 VLM form must preserve both Streamlit and Gradio cache decorators."""
+    section = _template_section("T1")
+    vlm_split = section.split("### VLM", 1)
+    assert len(vlm_split) == 2, "T1 missing '### VLM' subsection"
+    vlm_section = vlm_split[1]
+    assert "@st.cache_resource" in vlm_section, (
+        "T1 VLM form missing @st.cache_resource (Streamlit cache decorator)"
+    )
+    assert "@lru_cache(maxsize=1)" in vlm_section, (
+        "T1 VLM form missing @lru_cache(maxsize=1) (Gradio cache decorator)"
+    )
+
+
 def test_t2_maps_max_new_tokens_to_max_tokens():
     """T2 must document the max_new_tokens → max_tokens kwarg rename and show
     the literal mlx_lm.generate call shape with max_tokens=."""
