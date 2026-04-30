@@ -2,7 +2,7 @@
 
 The static tests in `mlx-app-converter/tests/` verify documentation invariants
 but do not exercise the actual rewrite end-to-end. This directory contains
-six fixture apps spanning v1 LLM, v2 VLM / multi-modal scope, and rejection
+seven fixture apps spanning v1 LLM, v2 VLM / multi-modal scope, and rejection
 paths, each with an expected-output checklist so a human can confirm that the
 skill produces correct results against a known input.
 
@@ -41,6 +41,11 @@ manual-tests/
 │   ├── pyproject.toml
 │   ├── test_streamlit_app.py
 │   └── EXPECTED.md
+├── gradio-multimodal-fixture/             # v2 — LLM + VLM multi-modal Gradio
+│   ├── app.py
+│   ├── requirements.txt
+│   ├── test_app.py
+│   └── EXPECTED.md
 └── streamlit-streaming-fixture/           # v2 — exercises streaming soft-reject gate
     ├── streamlit_app.py
     ├── pyproject.toml
@@ -64,11 +69,14 @@ Pick whichever surface you want to exercise:
 - `streamlit-multimodal-fixture` (v2) — LLM + VLM in one file; presents
   **two** variant matrices, unions imports (`import mlx_lm` + `import
   mlx_vlm`), prints a single combined `uv add mlx-lm mlx-vlm`.
+- `gradio-multimodal-fixture` (v2 follow-up) — Gradio counterpart of
+  streamlit-multimodal-fixture; same TWO matrix prompts, but T5 appends two
+  separate lines to `requirements.txt` instead of a single combined `uv add`.
 - `streamlit-streaming-fixture` (v2) — exercises the streaming soft-reject gate;
   conversion should be REJECTED, source unmodified. Documents the rejection-path
   UX rather than rewrite correctness.
 
-Run all six to get full coverage; pick one or two to spot-check after a
+Run all seven to get full coverage; pick one or two to spot-check after a
 template edit.
 
 ### Step 2 — Copy to a scratch location
