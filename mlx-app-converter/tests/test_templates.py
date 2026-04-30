@@ -592,12 +592,19 @@ VLM_ALLOWLIST = [
 
 
 def test_skill_md_description_mentions_vlm():
-    """SKILL.md YAML description must mention VLM/mlx-vlm so the trigger
-    description picks up VLM conversion requests."""
+    """SKILL.md YAML frontmatter description must mention VLM or mlx-vlm so
+    the trigger description picks up VLM-conversion requests. Scoped to the
+    frontmatter only — references elsewhere in the body don't count, since
+    only the description drives the skill-trigger."""
     text = SKILL_MD.read_text()
-    assert "VLM" in text or "mlx-vlm" in text, (
-        "SKILL.md description must mention VLM or mlx-vlm to trigger on "
-        "VLM-conversion requests"
+    frontmatter_match = re.match(r"^---\n(.*?)\n---\n", text, re.DOTALL)
+    assert frontmatter_match, (
+        "SKILL.md missing YAML frontmatter (expected leading '---' block)"
+    )
+    frontmatter = frontmatter_match.group(1)
+    assert "VLM" in frontmatter or "mlx-vlm" in frontmatter, (
+        "SKILL.md YAML frontmatter description must mention VLM or mlx-vlm "
+        "to trigger on VLM-conversion requests. (Body references don't count.)"
     )
 
 
@@ -611,12 +618,55 @@ def test_skill_md_step3_documents_modality_tagging():
 
 
 def test_skill_md_step3_lists_full_vlm_allowlist():
-    """SKILL.md Step 3 must enumerate every entry of the VLM allowlist."""
+    """SKILL.md must list every VLM_ALLOWLIST entry in BOTH the modality-
+    tagging bullet AND the rejection message, in the same order, with no
+    drift between the two lists. This is the single-source-of-truth check
+    that catches partial removals from one list while the other retains
+    the entry."""
     text = SKILL_MD.read_text()
-    for entry in VLM_ALLOWLIST:
-        assert entry in text, (
-            f"SKILL.md missing VLM allowlist entry: {entry}"
-        )
+
+    # Modality-tagging bullet has backticks around each class name.
+    # Pattern: "VLM allowlist (umbrella + curated families): `<list>` → tag"
+    modality_match = re.search(
+        r"VLM allowlist \(umbrella \+ curated families\):\s*"
+        r"((?:`[A-Za-z0-9_]+`(?:,\s*)?)+)\s*→",
+        text,
+    )
+    assert modality_match, (
+        "SKILL.md missing the 'VLM allowlist (umbrella + curated families): "
+        "<list> →' Step 3 modality-tagging bullet"
+    )
+    # Extract class names from backtick-wrapped list.
+    modality_list = re.findall(r"`([A-Za-z0-9_]+)`", modality_match.group(1))
+
+    # Rejection message has plain class names (no backticks).
+    # Pattern: "Supported VLM classes: <list>. LLM classes:"
+    rejection_match = re.search(
+        r"Supported VLM classes:\s*([A-Za-z0-9_, ]+?)\.\s*LLM classes:",
+        text,
+    )
+    assert rejection_match, (
+        "SKILL.md missing the 'Supported VLM classes: <list>. LLM classes:' "
+        "rejection-message format"
+    )
+    rejection_list = [
+        c.strip() for c in rejection_match.group(1).split(",") if c.strip()
+    ]
+
+    assert modality_list == VLM_ALLOWLIST, (
+        f"Modality-tagging bullet drifted from VLM_ALLOWLIST.\n"
+        f"  bullet:    {modality_list}\n"
+        f"  allowlist: {VLM_ALLOWLIST}"
+    )
+    assert rejection_list == VLM_ALLOWLIST, (
+        f"Rejection-message list drifted from VLM_ALLOWLIST.\n"
+        f"  rejection: {rejection_list}\n"
+        f"  allowlist: {VLM_ALLOWLIST}"
+    )
+    assert modality_list == rejection_list, (
+        "VLM allowlist drift between Step 3 bullet and rejection message — "
+        "they must stay byte-identical (single source of truth)."
+    )
 
 
 def test_skill_md_step3_streaming_gate_present():
