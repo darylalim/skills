@@ -138,6 +138,32 @@ def _sort_key(v: Variant, *, parser=parse_param_count) -> tuple[tuple[int, float
 
 
 # ---------------------------------------------------------------------------
+# Audio helpers
+# ---------------------------------------------------------------------------
+
+
+def audio_repo_predicate(model_id: str) -> bool:
+    """True iff *model_id* belongs to mlx-community's asr-* whisper family.
+
+    Per Phase 0.2: only -asr-* repos ship processor files (preprocessor_config.json,
+    tokenizer files). Non-asr repos break mlx_audio.stt.utils.load(...) at runtime
+    with `ValueError: Processor not found.` This predicate is the audio caller's
+    repo_predicate — it restricts the variant matrix to working repos.
+    """
+    name = model_id.split("/")[-1] if "/" in model_id else model_id
+    return "-asr-" in name
+
+
+def _matches_en_flag(model_id: str, *, source_is_en: bool | None) -> bool:
+    """Filter variants by `.en` flag against source_is_en (audio-only)."""
+    if source_is_en is None:
+        return True  # Caller doesn't care; v1/v2 LLM/VLM path.
+    name = model_id.split("/")[-1] if "/" in model_id else model_id
+    variant_is_en = ".en" in name
+    return variant_is_en == source_is_en
+
+
+# ---------------------------------------------------------------------------
 # Query
 # ---------------------------------------------------------------------------
 
@@ -158,42 +184,46 @@ def query_mlx_variants(
     base_name: str,
     *,
     list_models: Callable[..., Iterable[object]] | None = None,
+    size_parser: Callable[[str], str | None] = parse_param_count,
+    repo_predicate: Callable[[str], bool] | None = None,
+    source_is_en: bool | None = None,
 ) -> list[Variant]:
     """Query HF Hub for mlx-community variants matching *base_name*.
 
     Args:
-        base_name: The base model name to search for (e.g. "Llama-3.1-8B-Instruct").
-        list_models: Optional callable replacing huggingface_hub.list_models
-            for testing.
-
-    Returns:
-        Sorted list of Variant objects (smaller param count first, then
-        higher precision first).
+        base_name: The base model name to search for.
+        list_models: Optional callable replacing huggingface_hub.list_models.
+        size_parser: Callable mapping a model name to a size label
+            (parse_param_count for LLM/VLM, parse_size_name for audio).
+        repo_predicate: Optional callable; if provided, only variants whose
+            full ID passes the predicate are kept. Audio passes
+            audio_repo_predicate (restricts to asr-* family).
+        source_is_en: Audio-only. If True, keep only `.en` variants.
+            If False, drop `.en` variants. If None, keep all (v1/v2 default).
     """
     if list_models is None:
         from huggingface_hub import (  # type: ignore[import-untyped]
             list_models as _list_models,
         )
-
         list_models = _list_models
 
     raw = list_models(author="mlx-community", search=base_name)
     variants: list[Variant] = []
     for model in raw:
         model_id = _get_model_id(model)
-        param_count = parse_param_count(model_id)
+        if repo_predicate is not None and not repo_predicate(model_id):
+            continue
+        if not _matches_en_flag(model_id, source_is_en=source_is_en):
+            continue
+        size = size_parser(model_id)
         quantization = parse_quantization(model_id)
-        if param_count is None or quantization is None:
+        if size is None or quantization is None:
             continue
         variants.append(
-            Variant(
-                full_name=model_id,
-                param_count=param_count,
-                quantization=quantization,
-            )
+            Variant(full_name=model_id, param_count=size, quantization=quantization)
         )
 
-    return sorted(variants, key=_sort_key)
+    return sorted(variants, key=lambda v: _sort_key(v, parser=size_parser))
 
 
 # ---------------------------------------------------------------------------

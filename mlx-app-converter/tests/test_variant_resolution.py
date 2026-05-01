@@ -666,3 +666,115 @@ class TestSortKeyAudio:
             variants, key=lambda v: vr._sort_key(v, parser=vr.parse_param_count)
         )
         assert [v.param_count for v in sorted_variants] == ["1B", "8B", "70B"]
+
+
+class TestAudioRepoPredicate:
+    """Module-level helper used by the audio caller of query_mlx_variants."""
+
+    def test_asr_repo_passes(self):
+        assert vr.audio_repo_predicate("mlx-community/whisper-large-v3-asr-fp16") is True
+
+    def test_asr_repo_with_en_passes(self):
+        assert vr.audio_repo_predicate("mlx-community/whisper-medium.en-asr-4bit") is True
+
+    def test_non_asr_repo_fails(self):
+        assert vr.audio_repo_predicate("mlx-community/whisper-large-v3-fp16") is False
+
+    def test_mlx_quant_repo_fails(self):
+        assert vr.audio_repo_predicate("mlx-community/whisper-tiny-mlx-q4") is False
+
+    def test_bare_mlx_repo_fails(self):
+        assert vr.audio_repo_predicate("mlx-community/whisper-base-mlx") is False
+
+
+class TestQueryMlxVariantsAudio:
+    def _fake_whisper_models(self):
+        return [
+            # asr-* family (should survive predicate):
+            FakeModel("mlx-community/whisper-tiny-asr-fp16"),
+            FakeModel("mlx-community/whisper-tiny-asr-4bit"),
+            FakeModel("mlx-community/whisper-base-asr-fp16"),
+            FakeModel("mlx-community/whisper-large-v3-asr-fp16"),
+            FakeModel("mlx-community/whisper-large-v3-asr-5bit"),
+            FakeModel("mlx-community/whisper-large-v3-turbo-asr-fp16"),
+            # .en variants (filtered by source_is_en):
+            FakeModel("mlx-community/whisper-tiny.en-asr-fp16"),
+            FakeModel("mlx-community/whisper-medium.en-asr-4bit"),
+            # Non-asr (should be filtered out by repo_predicate):
+            FakeModel("mlx-community/whisper-tiny-fp16"),
+            FakeModel("mlx-community/whisper-large-v3-mlx-q4"),
+            FakeModel("mlx-community/whisper-base-mlx"),
+        ]
+
+    def test_audio_query_filters_to_asr_only(self):
+        def fake(*, author, search):
+            return self._fake_whisper_models()
+
+        variants = vr.query_mlx_variants(
+            "whisper",
+            list_models=fake,
+            size_parser=vr.parse_size_name,
+            repo_predicate=vr.audio_repo_predicate,
+            source_is_en=False,
+        )
+        full_names = {v.full_name for v in variants}
+        assert all("-asr-" in n for n in full_names)
+        assert all(".en" not in n for n in full_names)
+
+    def test_audio_query_with_en_source_filters_to_en_variants(self):
+        def fake(*, author, search):
+            return self._fake_whisper_models()
+
+        variants = vr.query_mlx_variants(
+            "whisper",
+            list_models=fake,
+            size_parser=vr.parse_size_name,
+            repo_predicate=vr.audio_repo_predicate,
+            source_is_en=True,
+        )
+        full_names = {v.full_name for v in variants}
+        assert all("-asr-" in n and ".en" in n for n in full_names)
+        assert "mlx-community/whisper-tiny.en-asr-fp16" in full_names
+        assert "mlx-community/whisper-medium.en-asr-4bit" in full_names
+
+    def test_audio_query_sorts_by_size_then_precision(self):
+        def fake(*, author, search):
+            return self._fake_whisper_models()
+
+        variants = vr.query_mlx_variants(
+            "whisper",
+            list_models=fake,
+            size_parser=vr.parse_size_name,
+            repo_predicate=vr.audio_repo_predicate,
+            source_is_en=False,
+        )
+        sizes = [v.param_count for v in variants]
+        # Ascending size order across asr-only, multilingual variants.
+        # Variants surviving predicate + non-en filter:
+        # tiny-asr-fp16, tiny-asr-4bit (both tiny)
+        # base-asr-fp16
+        # large-v3-asr-fp16, large-v3-asr-5bit (both large-v3)
+        # large-v3-turbo-asr-fp16
+        assert sizes == ["tiny", "tiny", "base", "large-v3", "large-v3", "large-v3-turbo"]
+
+    def test_audio_query_includes_5bit(self):
+        def fake(*, author, search):
+            return self._fake_whisper_models()
+
+        variants = vr.query_mlx_variants(
+            "whisper",
+            list_models=fake,
+            size_parser=vr.parse_size_name,
+            repo_predicate=vr.audio_repo_predicate,
+            source_is_en=False,
+        )
+        assert any(v.quantization == "5bit" for v in variants)
+
+    def test_v2_callers_unaffected_when_no_kwargs_passed(self):
+        """Regression: LLM callers using only size_parser still work."""
+        def fake(*, author, search):
+            return [FakeModel("mlx-community/Llama-3.1-8B-Instruct-bf16")]
+
+        variants = vr.query_mlx_variants("Llama", list_models=fake)
+        # Default size_parser=parse_param_count, no repo_predicate filter.
+        assert len(variants) == 1 and variants[0].param_count == "8B"
