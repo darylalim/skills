@@ -168,6 +168,18 @@ def _matches_en_flag(model_id: str, *, source_is_en: bool | None) -> bool:
 # ---------------------------------------------------------------------------
 
 
+def _default_list_models():
+    """Return the real huggingface_hub.list_models, lazily imported.
+
+    Centralizes the import so tests can monkeypatch a single seam instead of
+    patching huggingface_hub directly.
+    """
+    from huggingface_hub import (  # type: ignore[import-untyped]
+        list_models as _list_models,
+    )
+    return _list_models
+
+
 def _get_model_id(model_obj: object) -> str:
     """Return the model ID from a HF model info object.
 
@@ -202,10 +214,7 @@ def query_mlx_variants(
             If False, drop `.en` variants. If None, keep all (v1/v2 default).
     """
     if list_models is None:
-        from huggingface_hub import (  # type: ignore[import-untyped]
-            list_models as _list_models,
-        )
-        list_models = _list_models
+        list_models = _default_list_models()
 
     raw = list_models(author="mlx-community", search=base_name)
     variants: list[Variant] = []
@@ -290,11 +299,17 @@ def render_matrix(
     default: Variant | None,
     *,
     model_id: str,
+    size_parser: Callable[[str], str | None] = parse_param_count,
 ) -> str:
     """Render the variant selection matrix as a human-readable string.
 
     Layout: rows = param counts ascending, columns = quantization in
     QUANTIZATION_PRECEDENCE order (empty columns omitted).
+
+    Args:
+        size_parser: The same parser used to build the variants; drives row
+            ordering. LLM/VLM use parse_param_count (numeric B-sort); audio
+            uses parse_size_name (SIZE_NAME_ORDER ordinal sort).
     """
     if not variants:
         return f"No MLX variants found for {model_id}."
@@ -302,7 +317,7 @@ def render_matrix(
     # Collect unique param counts (ascending) and quantizations present
     all_params_sorted = sorted(
         {v.param_count for v in variants},
-        key=_param_count_numeric,
+        key=lambda p: _size_index(p, size_parser),
     )
     # Only include quantization columns that have at least one variant
     present_quants = {v.quantization for v in variants}
@@ -363,9 +378,9 @@ def render_matrix(
                 "highest available precision."
             )
         elif original_param_count is not None:
-            orig_val = _param_count_numeric(original_param_count)
-            default_val = _param_count_numeric(default.param_count)
-            if default_val < orig_val:
+            orig_rank = _size_index(original_param_count, size_parser)
+            default_rank = _size_index(default.param_count, size_parser)
+            if default_rank < orig_rank:
                 reason = (
                     f"closest smaller param count to your original "
                     f"{original_param_count}, highest available precision."
@@ -449,11 +464,7 @@ def find_closest_siblings(
         List of model IDs sorted by (edit_distance, name).
     """
     if list_models is None:
-        from huggingface_hub import (  # type: ignore[import-untyped]
-            list_models as _list_models,
-        )
-
-        list_models = _list_models
+        list_models = _default_list_models()
 
     # Broader search: first word of base_name
     first_word = base_name.split("-")[0]
@@ -522,10 +533,22 @@ def parse_reply(
 
 
 def _cli_query(args: argparse.Namespace) -> None:
-    variants = query_mlx_variants(args.base_name)
-    default = pick_default(variants, args.orig_param_count)
+    size_parser = pick_parser(args.modality)
+    repo_predicate = audio_repo_predicate if args.modality == "audio" else None
+    source_is_en: bool | None = None
+    if args.modality == "audio" and args.model_id is not None:
+        source_is_en = args.model_id.endswith(".en")
+
+    variants = query_mlx_variants(
+        args.base_name,
+        list_models=_default_list_models(),
+        size_parser=size_parser,
+        repo_predicate=repo_predicate,
+        source_is_en=source_is_en,
+    )
+    default = pick_default(variants, args.orig_param_count, size_parser=size_parser)
     display_id = args.model_id or args.base_name
-    print(render_matrix(variants, args.orig_param_count, default, model_id=display_id))
+    print(render_matrix(variants, args.orig_param_count, default, model_id=display_id, size_parser=size_parser))
 
 
 def _cli_siblings(args: argparse.Namespace) -> None:
@@ -565,6 +588,12 @@ def main(argv: list[str] | None = None) -> None:
             "Full original model ID for display "
             "(e.g. meta-llama/Llama-3.1-8B-Instruct)."
         ),
+    )
+    q.add_argument(
+        "--modality",
+        choices=("llm", "vlm", "audio"),
+        default="llm",
+        help="Modality routing for the size parser. Default: llm.",
     )
     q.set_defaults(func=_cli_query)
 

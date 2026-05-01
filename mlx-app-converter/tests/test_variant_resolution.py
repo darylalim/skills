@@ -818,3 +818,78 @@ class TestPickDefaultAudio:
         result = vr.pick_default(v, None, size_parser=vr.parse_size_name)
         # Best precision (bf16) wins regardless of size.
         assert result.quantization == "bf16"
+
+
+class TestCLIModalityFlag:
+    def test_audio_modality_renders_named_size_matrix(self, capsys, monkeypatch):
+        def fake(*, author, search):
+            return [
+                FakeModel("mlx-community/whisper-large-v3-asr-fp16"),
+                FakeModel("mlx-community/whisper-large-v3-turbo-asr-fp16"),
+                FakeModel("mlx-community/whisper-base-asr-fp16"),
+            ]
+        monkeypatch.setattr(vr, "_default_list_models", lambda: fake)
+        vr.main([
+            "query",
+            "--modality", "audio",
+            "--base-name", "whisper-large-v3",
+            "--orig-param-count", "large-v3",
+            "--model-id", "openai/whisper-large-v3",
+        ])
+        out = capsys.readouterr().out
+        assert "large-v3" in out
+        assert "large-v3-turbo" in out
+        assert "base" in out
+
+    def test_default_modality_is_llm_for_backward_compat(self, capsys, monkeypatch):
+        def fake(*, author, search):
+            return [FakeModel("mlx-community/Llama-3.1-8B-Instruct-bf16")]
+        monkeypatch.setattr(vr, "_default_list_models", lambda: fake)
+        vr.main([
+            "query",
+            "--base-name", "Llama-3.1-8B-Instruct",
+            "--orig-param-count", "8B",
+        ])
+        out = capsys.readouterr().out
+        assert "8B" in out
+
+
+class TestCLIAudioAsrFiltering:
+    def test_audio_modality_filters_to_asr_only(self, capsys, monkeypatch):
+        def fake(*, author, search):
+            return [
+                FakeModel("mlx-community/whisper-large-v3-asr-fp16"),
+                FakeModel("mlx-community/whisper-large-v3-fp16"),  # non-asr, filtered out
+                FakeModel("mlx-community/whisper-large-v3-mlx-q4"),  # non-asr, filtered out
+            ]
+        monkeypatch.setattr(vr, "_default_list_models", lambda: fake)
+        vr.main([
+            "query",
+            "--modality", "audio",
+            "--base-name", "whisper-large-v3",
+            "--orig-param-count", "large-v3",
+            "--model-id", "openai/whisper-large-v3",
+        ])
+        out = capsys.readouterr().out
+        # The fp16 column should appear (from asr-fp16).
+        assert "fp16" in out
+        # Non-asr q4 must NOT appear in the matrix grid.
+        assert "mlx-q4" not in out
+
+    def test_audio_modality_with_en_source_filters_to_en_variants(self, capsys, monkeypatch):
+        def fake(*, author, search):
+            return [
+                FakeModel("mlx-community/whisper-medium-asr-4bit"),
+                FakeModel("mlx-community/whisper-medium.en-asr-4bit"),
+            ]
+        monkeypatch.setattr(vr, "_default_list_models", lambda: fake)
+        vr.main([
+            "query",
+            "--modality", "audio",
+            "--base-name", "whisper-medium",
+            "--orig-param-count", "medium",
+            "--model-id", "openai/whisper-medium.en",
+        ])
+        out = capsys.readouterr().out
+        # The .en variant's full name should appear in the rendered output.
+        assert ".en" in out
