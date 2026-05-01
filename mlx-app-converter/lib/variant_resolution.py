@@ -234,62 +234,48 @@ def query_mlx_variants(
 def pick_default(
     variants: list[Variant],
     original_param_count: str | None,
+    *,
+    size_parser: Callable[[str], str | None] = parse_param_count,
 ) -> Variant | None:
     """Pick the default variant according to the variant-resolution spec.
 
-    Rule:
-    1. Filter to variants matching original_param_count.
-    2. Among those, pick the highest precision (lowest QUANTIZATION_PRECEDENCE
-       index).
-    3. If none match, fall back to the largest param count smaller than
-       original.
-    4. If nothing smaller, fall back to the smallest param count larger than
-       original.
-    5. Return None if variants is empty.
+    Default rule (per modality, identical shape):
+    1. Exact match on original size; pick highest precision.
+    2. Otherwise: closest smaller size; highest precision.
+    3. Otherwise: smallest larger size; highest precision.
+    4. Empty input → None; missing original → overall best.
+
+    For audio, size_parser=parse_size_name uses SIZE_NAME_ORDER ordinals
+    for "smaller"/"larger" comparisons. For LLM/VLM, the default
+    parse_param_count uses numeric comparisons.
     """
     if not variants:
         return None
 
-    # Helper: best variant in a group (highest precision)
     def best_in_group(group: list[Variant]) -> Variant:
         return min(group, key=lambda v: _quant_index(v.quantization))
 
-    # Step 1+2: exact param-count match
+    def size_rank(size: str) -> tuple[int, float]:
+        return _size_index(size, size_parser)
+
     if original_param_count is not None:
         matched = [v for v in variants if v.param_count == original_param_count]
         if matched:
             return best_in_group(matched)
 
-    # Step 3: closest smaller
-    if original_param_count is not None:
-        orig_val = _param_count_numeric(original_param_count)
-        smaller = [
-            v for v in variants
-            if _param_count_numeric(v.param_count) < orig_val
-        ]
+        orig_rank = size_rank(original_param_count)
+        smaller = [v for v in variants if size_rank(v.param_count) < orig_rank]
         if smaller:
-            # largest among smaller
-            largest_val = max(_param_count_numeric(v.param_count) for v in smaller)
-            group = [
-                v for v in smaller
-                if _param_count_numeric(v.param_count) == largest_val
-            ]
+            largest_rank = max(size_rank(v.param_count) for v in smaller)
+            group = [v for v in smaller if size_rank(v.param_count) == largest_rank]
             return best_in_group(group)
 
-        # Step 4: smallest larger
-        larger = [
-            v for v in variants
-            if _param_count_numeric(v.param_count) > orig_val
-        ]
+        larger = [v for v in variants if size_rank(v.param_count) > orig_rank]
         if larger:
-            smallest_val = min(_param_count_numeric(v.param_count) for v in larger)
-            group = [
-                v for v in larger
-                if _param_count_numeric(v.param_count) == smallest_val
-            ]
+            smallest_rank = min(size_rank(v.param_count) for v in larger)
+            group = [v for v in larger if size_rank(v.param_count) == smallest_rank]
             return best_in_group(group)
 
-    # original_param_count is None or nothing matches: pick overall best
     return best_in_group(variants)
 
 

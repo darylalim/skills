@@ -778,3 +778,43 @@ class TestQueryMlxVariantsAudio:
         variants = vr.query_mlx_variants("Llama", list_models=fake)
         # Default size_parser=parse_param_count, no repo_predicate filter.
         assert len(variants) == 1 and variants[0].param_count == "8B"
+
+
+class TestPickDefaultAudio:
+    def _whisper_variants(self):
+        return [
+            vr.Variant("mlx-community/whisper-tiny-bf16", "tiny", "bf16"),
+            vr.Variant("mlx-community/whisper-base-fp16", "base", "fp16"),
+            vr.Variant("mlx-community/whisper-medium-fp16", "medium", "fp16"),
+            vr.Variant("mlx-community/whisper-medium-4bit", "medium", "4bit"),
+            vr.Variant("mlx-community/whisper-large-v3-bf16", "large-v3", "bf16"),
+            vr.Variant("mlx-community/whisper-large-v3-fp16", "large-v3", "fp16"),
+            vr.Variant("mlx-community/whisper-large-v3-turbo-fp16", "large-v3-turbo", "fp16"),
+        ]
+
+    def test_audio_exact_match_picks_highest_precision(self):
+        v = self._whisper_variants()
+        result = vr.pick_default(v, "large-v3", size_parser=vr.parse_size_name)
+        assert result.param_count == "large-v3" and result.quantization == "bf16"
+
+    def test_audio_fallback_to_smaller_named_size(self):
+        v = self._whisper_variants()
+        # No "small" variants in fixture; should fall back to "base" (closest smaller).
+        result = vr.pick_default(v, "small", size_parser=vr.parse_size_name)
+        assert result.param_count == "base"
+
+    def test_audio_fallback_to_larger_named_size(self):
+        # Sparse fixture with no smaller variants below "tiny".
+        sparse = [
+            vr.Variant("mlx-community/whisper-medium-fp16", "medium", "fp16"),
+            vr.Variant("mlx-community/whisper-large-v3-bf16", "large-v3", "bf16"),
+        ]
+        result = vr.pick_default(sparse, "tiny", size_parser=vr.parse_size_name)
+        # No smaller exists — fall through to closest larger.
+        assert result.param_count == "medium"
+
+    def test_audio_none_orig_picks_overall_best(self):
+        v = self._whisper_variants()
+        result = vr.pick_default(v, None, size_parser=vr.parse_size_name)
+        # Best precision (bf16) wins regardless of size.
+        assert result.quantization == "bf16"
