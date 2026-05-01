@@ -623,3 +623,18 @@ class TestSizeNameOrder:
         assert order.index("small") < order.index("medium") < order.index("large")
         assert order.index("large") < order.index("large-v2") < order.index("large-v3")
         assert order.index("large-v3") < order.index("large-v3-turbo")
+
+
+class TestPickParser:
+    def test_audio_returns_parse_size_name(self):
+        assert vr.pick_parser("audio") is vr.parse_size_name
+
+    def test_llm_returns_parse_param_count(self):
+        assert vr.pick_parser("llm") is vr.parse_param_count
+
+    def test_vlm_returns_parse_param_count(self):
+        assert vr.pick_parser("vlm") is vr.parse_param_count
+
+    def test_unknown_returns_parse_param_count(self):
+        # Preserve v2 behavior for unknown modality strings.
+        assert vr.pick_parser("unknown") is vr.parse_param_count

@@ -82,6 +82,16 @@ def parse_size_name(name: str) -> str | None:
     return m.group(1).lower() if m else None
 
 
+def pick_parser(modality: str) -> Callable[[str], str | None]:
+    """Dispatch to the right size parser for a modality.
+
+    Audio uses parse_size_name (Whisper named sizes); LLM/VLM use
+    parse_param_count (B-style). Unknown modalities fall back to
+    parse_param_count to preserve v2 behavior.
+    """
+    return parse_size_name if modality == "audio" else parse_param_count
+
+
 # ---------------------------------------------------------------------------
 # Variant dataclass
 # ---------------------------------------------------------------------------
