@@ -22,7 +22,9 @@ from typing import Callable, Iterable
 # THE source of truth for quantization precedence (highest → lowest precision).
 # This string must match the literal "bf16 > fp16 > 8bit > 6bit > 4bit" in
 # references/variant-resolution.md.
-QUANTIZATION_PRECEDENCE: tuple[str, ...] = ("bf16", "fp16", "8bit", "6bit", "4bit")
+QUANTIZATION_PRECEDENCE: tuple[str, ...] = (
+    "bf16", "fp16", "8bit", "6bit", "5bit", "4bit",
+)
 
 # Regex to extract parameter count like "8B", "0.5B", "70B" from a model name.
 # Case-insensitive: mlx-community has historically published variants with

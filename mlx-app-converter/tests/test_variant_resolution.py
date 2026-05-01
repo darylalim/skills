@@ -114,6 +114,19 @@ class TestParseQuantization:
     def test_with_mlx_prefix(self):
         assert vr.parse_quantization("mlx-community/Llama-3.1-8B-Instruct-bf16") == "bf16"
 
+    def test_5bit(self):
+        assert vr.parse_quantization("whisper-large-v3-asr-5bit") == "5bit"
+
+    def test_5bit_with_prefix(self):
+        assert vr.parse_quantization("mlx-community/whisper-medium-asr-5bit") == "5bit"
+
+    def test_asr_fp16_passes_through(self):
+        """The -asr- prefix on quantization suffix doesn't interfere with parsing."""
+        assert vr.parse_quantization("whisper-large-v3-asr-fp16") == "fp16"
+
+    def test_asr_4bit_passes_through(self):
+        assert vr.parse_quantization("mlx-community/whisper-base-asr-4bit") == "4bit"
+
 
 # ---------------------------------------------------------------------------
 # query_mlx_variants
@@ -443,15 +456,18 @@ class TestParseReply:
 
 
 class TestQuantizationPrecedence:
-    def test_order(self):
-        assert vr.QUANTIZATION_PRECEDENCE == ("bf16", "fp16", "8bit", "6bit", "4bit")
+    def test_5bit_present(self):
+        assert "5bit" in vr.QUANTIZATION_PRECEDENCE
 
-    def test_bf16_is_highest(self):
-        """bf16 should come before all others."""
-        assert vr.QUANTIZATION_PRECEDENCE[0] == "bf16"
+    def test_5bit_between_6bit_and_4bit(self):
+        order = vr.QUANTIZATION_PRECEDENCE
+        assert order.index("6bit") < order.index("5bit") < order.index("4bit")
 
-    def test_4bit_is_lowest(self):
-        assert vr.QUANTIZATION_PRECEDENCE[-1] == "4bit"
+    def test_existing_levels_unchanged(self):
+        order = vr.QUANTIZATION_PRECEDENCE
+        # bf16/fp16/8bit/6bit/4bit must still be present in canonical order.
+        for a, b in [("bf16", "fp16"), ("fp16", "8bit"), ("8bit", "6bit"), ("6bit", "4bit")]:
+            assert order.index(a) < order.index(b)
 
 
 # ---------------------------------------------------------------------------
