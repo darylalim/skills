@@ -638,3 +638,31 @@ class TestPickParser:
     def test_unknown_returns_parse_param_count(self):
         # Preserve v2 behavior for unknown modality strings.
         assert vr.pick_parser("unknown") is vr.parse_param_count
+
+
+class TestSortKeyAudio:
+    def test_audio_variants_sort_by_size_name_order(self):
+        variants = [
+            vr.Variant("mlx-community/whisper-large-v3-bf16", "large-v3", "bf16"),
+            vr.Variant("mlx-community/whisper-tiny-fp16", "tiny", "fp16"),
+            vr.Variant("mlx-community/whisper-medium-4bit", "medium", "4bit"),
+            vr.Variant("mlx-community/whisper-large-v3-turbo-bf16", "large-v3-turbo", "bf16"),
+        ]
+        sorted_variants = sorted(
+            variants, key=lambda v: vr._sort_key(v, parser=vr.parse_size_name)
+        )
+        assert [v.param_count for v in sorted_variants] == [
+            "tiny", "medium", "large-v3", "large-v3-turbo",
+        ]
+
+    def test_llm_variants_sort_by_param_count(self):
+        # Regression: existing v1/v2 LLM sort still works with the parser kwarg.
+        variants = [
+            vr.Variant("mlx-community/Llama-70B-bf16", "70B", "bf16"),
+            vr.Variant("mlx-community/Llama-1B-bf16", "1B", "bf16"),
+            vr.Variant("mlx-community/Llama-8B-bf16", "8B", "bf16"),
+        ]
+        sorted_variants = sorted(
+            variants, key=lambda v: vr._sort_key(v, parser=vr.parse_param_count)
+        )
+        assert [v.param_count for v in sorted_variants] == ["1B", "8B", "70B"]

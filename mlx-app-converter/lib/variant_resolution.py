@@ -122,8 +122,19 @@ def _quant_index(quantization: str) -> int:
         return len(QUANTIZATION_PRECEDENCE)
 
 
-def _sort_key(v: Variant) -> tuple[float, int]:
-    return (_param_count_numeric(v.param_count), _quant_index(v.quantization))
+def _size_index(size: str, parser) -> tuple[int, float]:
+    """Return a sortable key for a size label, dispatching on parser identity."""
+    if parser is parse_size_name:
+        try:
+            return (0, float(SIZE_NAME_ORDER.index(size)))
+        except ValueError:
+            return (1, 0.0)
+    # Default: numeric B-style.
+    return (0, _param_count_numeric(size))
+
+
+def _sort_key(v: Variant, *, parser=parse_param_count) -> tuple[tuple[int, float], int]:
+    return (_size_index(v.param_count, parser), _quant_index(v.quantization))
 
 
 # ---------------------------------------------------------------------------
