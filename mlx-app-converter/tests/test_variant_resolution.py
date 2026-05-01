@@ -469,6 +469,13 @@ class TestQuantizationPrecedence:
         for a, b in [("bf16", "fp16"), ("fp16", "8bit"), ("8bit", "6bit"), ("6bit", "4bit")]:
             assert order.index(a) < order.index(b)
 
+    def test_bf16_is_highest(self):
+        """bf16 should come before all others."""
+        assert vr.QUANTIZATION_PRECEDENCE[0] == "bf16"
+
+    def test_4bit_is_lowest(self):
+        assert vr.QUANTIZATION_PRECEDENCE[-1] == "4bit"
+
 
 # ---------------------------------------------------------------------------
 # v2 VLM coverage tests
