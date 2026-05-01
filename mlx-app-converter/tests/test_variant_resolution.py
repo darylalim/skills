@@ -893,3 +893,21 @@ class TestCLIAudioAsrFiltering:
         out = capsys.readouterr().out
         # The .en variant's full name should appear in the rendered output.
         assert ".en" in out
+
+
+class TestParseReplyAudio:
+    def test_named_size_cell_address(self):
+        variants = [
+            vr.Variant("mlx-community/whisper-large-v3-asr-fp16", "large-v3", "fp16"),
+            vr.Variant("mlx-community/whisper-large-v3-turbo-asr-fp16", "large-v3-turbo", "fp16"),
+        ]
+        assert vr.parse_reply("large-v3@fp16", variants, default=variants[0]) is variants[0]
+        assert vr.parse_reply("large-v3-turbo@fp16", variants, default=variants[0]) is variants[1]
+
+    def test_named_size_without_at_returns_none(self):
+        variants = [vr.Variant("x", "large-v3", "fp16")]
+        assert vr.parse_reply("large-v3", variants, default=variants[0]) is None
+
+    def test_named_size_unknown_quant_returns_none(self):
+        variants = [vr.Variant("x", "large-v3", "fp16")]
+        assert vr.parse_reply("large-v3@2bit", variants, default=variants[0]) is None
